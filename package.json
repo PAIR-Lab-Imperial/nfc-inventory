@@ -1,0 +1,18 @@
+{
+  "name": "pair-lab-nfc-inventory",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PAIR Lab NFC equipment inventory",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "worker:dev": "wrangler dev --config worker/wrangler.jsonc",
+    "worker:deploy": "wrangler deploy --config worker/wrangler.jsonc",
+    "db:migrate:local": "wrangler d1 migrations apply pair-lab-nfc-inventory --local --config worker/wrangler.jsonc",
+    "db:migrate:remote": "wrangler d1 migrations apply pair-lab-nfc-inventory --remote --config worker/wrangler.jsonc"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

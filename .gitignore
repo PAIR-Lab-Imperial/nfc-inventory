@@ -1,0 +1,18 @@
+node_modules/
+.runtime/
+outputs/
+.wrangler/
+.dev.vars
+.env
+.env.*
+!.env.example
+*.log
+*.sqlite
+*.sqlite3
+*.db
+*.backup.sql
+.DS_Store
+Thumbs.db
+
+# Local workbook generator used during the initial migration.
+scripts/build_inventory_template.mjs

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="PAIR Lab equipment inventory">
+    <title>PAIR Lab Equipment</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="./styles.css">
+    <script src="./config.js"></script>
+    <script type="module" src="./app.js"></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="./" aria-label="PAIR Lab equipment home">
+        <span class="brand-mark" aria-hidden="true">PAIR</span>
+        <span>Lab Equipment</span>
+      </a>
+      <span class="phase-badge">Foundation build</span>
+    </header>
+
+    <main class="shell" id="app">
+      <section class="hero" aria-labelledby="page-title">
+        <p class="eyebrow">NFC inventory</p>
+        <h1 id="page-title">Equipment information, where the equipment lives.</h1>
+        <p class="lede">
+          This public interface is being prepared for equipment lookup,
+          reservations, and check-in/out.
+        </p>
+      </section>
+
+      <section class="status-card" aria-live="polite">
+        <div class="status-icon" aria-hidden="true">✓</div>
+        <div>
+          <h2>Project foundation is ready</h2>
+          <p id="connection-status">Checking the API configuration…</p>
+        </div>
+      </section>
+
+      <noscript>This site requires JavaScript to load live equipment records.</noscript>
+    </main>
+
+    <footer>PAIR Lab · Imperial College London</footer>
+  </body>
+</html>
