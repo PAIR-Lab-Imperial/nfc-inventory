@@ -59,8 +59,10 @@ class MutationStatement extends FakeStatement {
     }
     if (this.query.includes("FROM checkouts")) return this.state.openCheckout;
     if (this.query.includes("FROM categories")) return this.state.categoryRecord;
+    if (this.query.includes("FROM proposal_options")) return this.state.proposalOptionRecord;
+    if (this.query.includes("FROM proposals")) return this.state.proposalRecord;
     if (this.query.includes("FROM equipment")) return this.state.equipmentRecord;
-    if (this.query.includes("FROM members WHERE username")) return this.state.memberRecord;
+    if (this.query.includes("FROM members") && this.query.includes("WHERE username")) return this.state.memberRecord;
     return null;
   }
 
@@ -108,9 +110,31 @@ function mutationEnvironment({ openCheckout = null, currentCheckout = null, nfcL
     }],
     adminLabels: [{
       id: "label-1", asset_code: "ROB-003", token_hint: "003-v1", status: "active",
+      scan_url: "https://pair-lab-imperial.github.io/nfc-inventory/?t=demo-rob-003-v1",
       notes: null, created_at: "2026-10-01T10:00:00.000Z", retired_at: null,
     }],
-    adminCategories: [{ name: "Robots", asset_code_prefix: "ROB" }],
+    adminCategories: [{ name: "Robots", asset_code_prefix: "ROB", description: "Robot platforms" }],
+    adminFiles: [{ asset_code: "ROB-003", kind: "manual", external_url: "https://example.test/manual.pdf", filename: "manual.pdf", description: "Manual" }],
+    adminProposals: [{
+      id: "proposal-1", title: "Mobile depth camera", requirement: "Portable depth sensing",
+      status: "proposed", selected_option_id: null, admin_notes: null,
+      created_at: "2026-10-01T10:00:00.000Z", updated_at: "2026-10-01T10:00:00.000Z",
+      requested_by_username: "ranul", requested_by: "Ranul", received_asset_code: null,
+    }],
+    adminProposalOptions: [{
+      id: "option-1", proposal_id: "proposal-1", name: "Camera A",
+      product_url: "https://example.test/camera-a", supplier: "Supplier",
+      quoted_price_minor: 12500, currency: "GBP", notes: "Compact", selected_option_id: null,
+    }],
+    proposalRecord: {
+      id: "proposal-1", title: "Mobile depth camera", status: "proposed",
+      selected_option_id: null, received_equipment_id: null, admin_notes: null,
+    },
+    proposalOptionRecord: { id: "option-1", name: "Camera A" },
+    operationalReservations: [],
+    operationalCheckouts: [],
+    operationalAudit: [],
+    operationalBackups: [],
     writes: [],
   };
   const environment = {
@@ -122,13 +146,27 @@ function mutationEnvironment({ openCheckout = null, currentCheckout = null, nfcL
         return new MutationStatement(query, state);
       },
       async batch(statements) {
-        if (statements.length === 5 && statements[0]?.query.includes("primary_photo_url")) {
+        if (statements.length === 8 && statements[0]?.query.includes("primary_photo_url")) {
           return [
             { results: state.adminEquipment },
             { results: state.adminComponents },
             { results: state.members.map((member) => ({ ...member, active: 1, notes: null })) },
             { results: state.adminLabels },
             { results: state.adminCategories },
+            { results: state.adminFiles },
+            { results: state.adminProposals },
+            { results: state.adminProposalOptions },
+          ];
+        }
+        if (statements.length === 2 && statements[0]?.query.includes("FROM proposals proposal")) {
+          return [{ results: state.adminProposals }, { results: state.adminProposalOptions }];
+        }
+        if (statements.length === 4 && statements[0]?.query.includes("FROM reservations reservation")) {
+          return [
+            { results: state.operationalReservations },
+            { results: state.operationalCheckouts },
+            { results: state.operationalAudit },
+            { results: state.operationalBackups },
           ];
         }
         if (statements[0]?.query.includes("SELECT id, asset_code, name, lifecycle_status")) {
@@ -469,6 +507,78 @@ test("administrator data includes equipment photos, bundle photos, members and N
   assert.equal(body.equipment[0].components[0].photoUrl, "https://example.test/robot.jpg");
   assert.equal(body.members[0].username, "ranul");
   assert.equal(body.labels[0].tokenHint, "003-v1");
+  assert.match(body.labels[0].scanUrl, /\?t=demo-rob-003-v1$/);
+  assert.equal(body.equipment[0].files[0].kind, "manual");
+  assert.equal(body.proposals[0].options[0].name, "Camera A");
+});
+
+test("public proposal routes list and create equipment suggestions", async () => {
+  const { environment, state } = mutationEnvironment();
+  const listResponse = await worker.fetch(new Request("https://api.example/api/v1/proposals"), environment);
+  assert.equal(listResponse.status, 200);
+  const listBody = await listResponse.json();
+  assert.equal(listBody.proposals[0].title, "Mobile depth camera");
+  assert.equal(listBody.proposals[0].options[0].quotedPrice, 125);
+
+  const createResponse = await worker.fetch(
+    postRequest("/api/v1/proposals", {
+      requestedByUsername: "ranul",
+      title: "New camera",
+      requirement: "Portable depth sensing",
+      options: [
+        { name: "Camera A", productUrl: "https://example.test/camera-a", quotedPrice: 125, currency: "GBP" },
+        { name: "Camera B", productUrl: "https://example.test/camera-b", quotedPrice: 150, currency: "GBP" },
+      ],
+    }),
+    environment,
+  );
+  assert.equal(createResponse.status, 201);
+  const createBody = await createResponse.json();
+  assert.equal(createBody.proposal.status, "proposed");
+  const writes = state.writes.at(-1);
+  assert.equal(writes.length, 4);
+  assert.match(writes[0].query, /INSERT INTO proposals/);
+  assert.match(writes[1].query, /INSERT INTO proposal_options/);
+  assert.match(writes[3].query, /proposal\.created/);
+});
+
+test("administrator can select and order a proposed option", async () => {
+  const { environment, state } = mutationEnvironment();
+  const token = await loginAdmin(environment);
+  const response = await worker.fetch(
+    new Request("https://api.example/api/v1/admin/proposals/proposal-1", {
+      method: "PUT",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        origin: "https://pair-lab-imperial.github.io",
+      },
+      body: JSON.stringify({ status: "ordered", selectedOptionId: "option-1", adminNotes: "Approved" }),
+    }),
+    environment,
+  );
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.proposal.status, "ordered");
+  assert.equal(body.proposal.selectedOptionName, "Camera A");
+  const writes = state.writes.at(-1);
+  assert.match(writes[0].query, /UPDATE proposals SET/);
+  assert.match(writes[1].query, /proposal\.updated/);
+});
+
+test("administrator operational export is protected and structured", async () => {
+  const { environment } = mutationEnvironment();
+  const unauthorized = await worker.fetch(new Request("https://api.example/api/v1/admin/export/operations"), environment);
+  assert.equal(unauthorized.status, 401);
+  const token = await loginAdmin(environment);
+  const response = await worker.fetch(new Request("https://api.example/api/v1/admin/export/operations", {
+    headers: { authorization: `Bearer ${token}` },
+  }), environment);
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.exportedBy, "test-admin");
+  assert.deepEqual(body.reservations, []);
+  assert.deepEqual(body.backupRuns, []);
 });
 
 test("administrator can update a bundle and its component photos", async () => {
@@ -503,7 +613,7 @@ test("administrator can update a bundle and its component photos", async () => {
   assert.equal(writes[2].parameters[9], "https://example.test/robot-new.jpg");
 });
 
-test("administrator generates a replacement NFC URL while storing only its hash", async () => {
+test("administrator generates and stores a recoverable replacement NFC URL", async () => {
   const { environment, state } = mutationEnvironment();
   const token = await loginAdmin(environment);
   const response = await worker.fetch(
@@ -524,5 +634,5 @@ test("administrator generates a replacement NFC URL while storing only its hash"
   const writes = state.writes.at(-1);
   assert.match(writes[0].query, /status = 'replaced'/);
   assert.match(writes[1].parameters[2], /^[a-f0-9]{64}$/);
-  assert.equal(writes[1].parameters.includes(body.label.scanUrl.split("?t=")[1]), false);
+  assert.equal(writes[1].parameters.includes(body.label.scanUrl), true);
 });

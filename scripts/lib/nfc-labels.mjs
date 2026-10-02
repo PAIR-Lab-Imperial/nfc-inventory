@@ -76,7 +76,7 @@ export function generateDummyNfcSql(labels) {
   ];
   for (const label of labels) {
     lines.push(
-      `INSERT INTO nfc_labels (id, equipment_id, token_hash, token_hint, status, notes) SELECT ${sqlValue(label.id)}, equipment.id, ${sqlValue(label.tokenHash)}, ${sqlValue(label.tokenHint)}, 'active', 'Temporary dummy NFC association' FROM equipment WHERE equipment.asset_code = ${sqlValue(label.assetCode)} COLLATE NOCASE AND NOT EXISTS (SELECT 1 FROM nfc_labels current_label WHERE current_label.equipment_id = equipment.id AND current_label.status = 'active') ON CONFLICT(id) DO NOTHING;`,
+      `INSERT INTO nfc_labels (id, equipment_id, token_hash, token_hint, scan_url, status, notes) SELECT ${sqlValue(label.id)}, equipment.id, ${sqlValue(label.tokenHash)}, ${sqlValue(label.tokenHint)}, ${sqlValue(label.url)}, 'active', 'Temporary dummy NFC association' FROM equipment WHERE equipment.asset_code = ${sqlValue(label.assetCode)} COLLATE NOCASE AND NOT EXISTS (SELECT 1 FROM nfc_labels current_label WHERE current_label.equipment_id = equipment.id AND current_label.status = 'active') ON CONFLICT(id) DO UPDATE SET scan_url = COALESCE(nfc_labels.scan_url, excluded.scan_url);`,
     );
     const auditJson = JSON.stringify({
       assetCode: label.assetCode,
@@ -110,10 +110,10 @@ export function generateReplacementNfcSql(label, previousStatus = "replaced") {
     previousStatus,
   });
   return [
-    "-- Generated NFC label replacement. Apply this file once and retain the URL separately.",
+    "-- Generated NFC label replacement. Apply this file once.",
     "PRAGMA foreign_keys = ON;",
     `UPDATE nfc_labels SET status = ${sqlValue(previousStatus)}, retired_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE equipment_id = (SELECT id FROM equipment WHERE asset_code = ${sqlValue(label.assetCode)} COLLATE NOCASE) AND status = 'active' AND id <> ${sqlValue(label.id)};`,
-    `INSERT INTO nfc_labels (id, equipment_id, token_hash, token_hint, status, notes) SELECT ${sqlValue(label.id)}, equipment.id, ${sqlValue(label.tokenHash)}, ${sqlValue(label.tokenHint)}, 'active', 'Generated replacement NFC association' FROM equipment WHERE equipment.asset_code = ${sqlValue(label.assetCode)} COLLATE NOCASE ON CONFLICT(id) DO UPDATE SET status = 'active', retired_at = NULL, notes = excluded.notes;`,
+    `INSERT INTO nfc_labels (id, equipment_id, token_hash, token_hint, scan_url, status, notes) SELECT ${sqlValue(label.id)}, equipment.id, ${sqlValue(label.tokenHash)}, ${sqlValue(label.tokenHint)}, ${sqlValue(label.url)}, 'active', 'Generated replacement NFC association' FROM equipment WHERE equipment.asset_code = ${sqlValue(label.assetCode)} COLLATE NOCASE ON CONFLICT(id) DO UPDATE SET scan_url = excluded.scan_url, status = 'active', retired_at = NULL, notes = excluded.notes;`,
     `INSERT INTO audit_events (id, actor_type, actor_name, action, entity_type, entity_id, after_json) SELECT ${sqlValue(label.auditId)}, 'admin', 'nfc-label-script', 'nfc_label.replaced', 'nfc_label', label.id, ${sqlValue(auditJson)} FROM nfc_labels label WHERE label.id = ${sqlValue(label.id)} ON CONFLICT(id) DO NOTHING;`,
     "",
   ].join("\n");

@@ -16,6 +16,12 @@ const statusLabels = Object.freeze({
   retired: "Retired",
 });
 
+const proposalStatusLabels = Object.freeze({
+  proposed: "Proposed",
+  ordered: "Ordered",
+  received: "Received",
+});
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -47,6 +53,15 @@ function formatDate(value, { includeTime = false } = {}) {
     year: "numeric",
     ...(includeTime ? { hour: "2-digit", minute: "2-digit" } : {}),
   }).format(date);
+}
+
+function formatMoney(value, currency) {
+  if (value === null || value === undefined || !currency) return null;
+  try {
+    return new Intl.NumberFormat("en-GB", { style: "currency", currency }).format(value);
+  } catch {
+    return `${currency} ${Number(value).toFixed(2)}`;
+  }
 }
 
 async function fetchJson(path) {
@@ -130,7 +145,53 @@ function equipmentCard(item) {
   `;
 }
 
-function renderCatalogue(data) {
+function proposalCard(proposal) {
+  const options = proposal.options.map((option) => {
+    const price = formatMoney(option.quotedPrice, option.currency);
+    return `
+      <li class="proposal-option${option.selected ? " selected" : ""}">
+        <div><strong>${escapeHtml(option.name)}</strong>${option.supplier ? `<span>${escapeHtml(option.supplier)}</span>` : ""}</div>
+        ${price ? `<span>${escapeHtml(price)}</span>` : ""}
+        <a href="${escapeHtml(option.productUrl)}" target="_blank" rel="noopener noreferrer">Product link</a>
+        ${option.selected ? `<small>Selected option</small>` : ""}
+      </li>
+    `;
+  }).join("");
+  const receivedLink = proposal.receivedAssetCode
+    ? `<a class="proposal-received-link" href="?item=${encodeURIComponent(proposal.receivedAssetCode)}">View received equipment ${escapeHtml(proposal.receivedAssetCode)}</a>`
+    : "";
+  return `
+    <article class="proposal-card">
+      <div class="proposal-card-heading">
+        <div><p class="eyebrow">${escapeHtml(proposal.requestedBy || "Lab member")}</p><h3>${escapeHtml(proposal.title)}</h3></div>
+        <span class="proposal-status status-${escapeHtml(proposal.status)}">${escapeHtml(proposalStatusLabels[proposal.status] || titleCase(proposal.status))}</span>
+      </div>
+      <p>${escapeHtml(proposal.requirement)}</p>
+      <ul class="proposal-options">${options}</ul>
+      ${receivedLink}
+    </article>
+  `;
+}
+
+function proposalOptionRow(index) {
+  return `
+    <fieldset class="proposal-option-editor" data-proposal-option>
+      <div class="proposal-option-editor-heading"><strong data-option-label>Option ${index + 1}</strong><button class="text-button" type="button" data-remove-proposal-option>Remove</button></div>
+      <div class="field-pair">
+        <label><span>Equipment or product name</span><input name="optionName" maxlength="200" required></label>
+        <label><span>Supplier <small>(optional)</small></span><input name="optionSupplier" maxlength="200"></label>
+      </div>
+      <label><span>Product link</span><input name="optionUrl" type="url" maxlength="2000" required placeholder="https://"></label>
+      <div class="field-pair compact-fields">
+        <label><span>Price <small>(optional)</small></span><input name="optionPrice" type="number" min="0" step="0.01" inputmode="decimal"></label>
+        <label><span>Currency</span><input name="optionCurrency" value="GBP" maxlength="3" pattern="[A-Za-z]{3}"></label>
+      </div>
+      <label><span>Option notes <small>(optional)</small></span><textarea name="optionNotes" maxlength="1000" rows="2"></textarea></label>
+    </fieldset>
+  `;
+}
+
+function renderCatalogue(data, proposalData, memberData, { message = "" } = {}) {
   document.title = "PAIR Lab Equipment";
   window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   const total = data.items.length;
@@ -142,6 +203,7 @@ function renderCatalogue(data) {
     .join("");
 
   app.innerHTML = `
+    ${message ? `<div class="action-confirmation" role="status">${escapeHtml(message)}</div>` : ""}
     <section class="catalogue-hero">
       <div>
         <p class="eyebrow">NFC inventory</p>
@@ -195,6 +257,38 @@ function renderCatalogue(data) {
         <button type="button" class="secondary-button" id="clear-filters">Clear filters</button>
       </div>
     </section>
+
+    <section class="proposal-panel" aria-labelledby="proposal-title">
+      <div class="panel-heading">
+        <div><p class="eyebrow">Equipment ideas</p><h2 id="proposal-title">Proposals</h2></div>
+        <button class="primary-button" id="open-proposal-dialog" type="button">Propose equipment</button>
+      </div>
+      <p class="proposal-intro">Share a requirement and compare possible products. Proposals are informational until an administrator marks one ordered.</p>
+      <div class="proposal-grid">
+        ${proposalData.proposals.length ? proposalData.proposals.map(proposalCard).join("") : `<div class="empty-results"><h3>No proposals yet.</h3><p>Start one when the lab needs equipment that is not in the catalogue.</p></div>`}
+      </div>
+    </section>
+
+    <dialog class="action-dialog proposal-dialog" id="proposal-dialog" aria-labelledby="proposal-dialog-title">
+      <form id="proposal-form">
+        <div class="dialog-heading">
+          <div><p class="eyebrow">Equipment idea</p><h2 id="proposal-dialog-title">Propose equipment</h2></div>
+          <button class="icon-button" type="button" data-close-proposal-dialog aria-label="Close">×</button>
+        </div>
+        <div class="dialog-fields">
+          <label><span>Lab member</span><select name="requestedByUsername" required><option value="">Select your name</option>${memberData.members.map((member) => `<option value="${escapeHtml(member.username)}">${escapeHtml(member.displayName)} (${escapeHtml(member.username)})</option>`).join("")}</select></label>
+          <label><span>Proposal title</span><input name="title" maxlength="180" required placeholder="For example: Mobile depth camera"></label>
+          <label><span>Requirement</span><textarea name="requirement" maxlength="3000" rows="4" required placeholder="What capability is needed, where it will be used, and any important constraints"></textarea></label>
+          <div class="proposal-options-heading"><div><p class="eyebrow">Choices</p><h3>Equipment options</h3></div><button class="secondary-button" id="add-proposal-option" type="button">Add option</button></div>
+          <div id="proposal-options-editor">${proposalOptionRow(0)}</div>
+        </div>
+        <p class="form-error" id="proposal-error" role="alert" hidden></p>
+        <div class="dialog-actions">
+          <button class="secondary-button" type="button" data-close-proposal-dialog>Cancel</button>
+          <button class="primary-button" id="proposal-submit" type="submit">Submit proposal</button>
+        </div>
+      </form>
+    </dialog>
   `;
 
   const searchInput = document.querySelector("#equipment-search");
@@ -234,6 +328,73 @@ function renderCatalogue(data) {
     searchInput.focus();
   });
   applyFilters();
+
+  const proposalDialog = document.querySelector("#proposal-dialog");
+  const proposalForm = document.querySelector("#proposal-form");
+  const optionsEditor = document.querySelector("#proposal-options-editor");
+  const proposalError = document.querySelector("#proposal-error");
+  const proposalSubmit = document.querySelector("#proposal-submit");
+  const refreshProposalOptionControls = () => {
+    const rows = [...optionsEditor.querySelectorAll("[data-proposal-option]")];
+    rows.forEach((row, index) => {
+      row.querySelector("[data-option-label]").textContent = `Option ${index + 1}`;
+      row.querySelector("[data-remove-proposal-option]").hidden = rows.length === 1;
+    });
+    document.querySelector("#add-proposal-option").disabled = rows.length >= 8;
+  };
+  document.querySelector("#open-proposal-dialog").addEventListener("click", () => {
+    proposalError.hidden = true;
+    proposalDialog.showModal();
+    proposalForm.querySelector("select")?.focus();
+  });
+  document.querySelectorAll("[data-close-proposal-dialog]").forEach((button) => button.addEventListener("click", () => proposalDialog.close()));
+  document.querySelector("#add-proposal-option").addEventListener("click", () => {
+    const count = optionsEditor.querySelectorAll("[data-proposal-option]").length;
+    if (count >= 8) return;
+    optionsEditor.insertAdjacentHTML("beforeend", proposalOptionRow(count));
+    refreshProposalOptionControls();
+  });
+  optionsEditor.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-remove-proposal-option]");
+    if (!button || optionsEditor.querySelectorAll("[data-proposal-option]").length === 1) return;
+    button.closest("[data-proposal-option]").remove();
+    refreshProposalOptionControls();
+  });
+  proposalForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!proposalForm.reportValidity()) return;
+    const formData = new FormData(proposalForm);
+    const options = [...optionsEditor.querySelectorAll("[data-proposal-option]")].map((row) => {
+      const price = row.querySelector('[name="optionPrice"]').value;
+      return {
+        name: row.querySelector('[name="optionName"]').value,
+        productUrl: row.querySelector('[name="optionUrl"]').value,
+        supplier: row.querySelector('[name="optionSupplier"]').value || null,
+        quotedPrice: price === "" ? null : Number(price),
+        currency: price === "" ? null : row.querySelector('[name="optionCurrency"]').value,
+        notes: row.querySelector('[name="optionNotes"]').value || null,
+      };
+    });
+    proposalSubmit.disabled = true;
+    proposalSubmit.textContent = "Submitting…";
+    proposalError.hidden = true;
+    try {
+      await postJson("/api/v1/proposals", {
+        requestedByUsername: formData.get("requestedByUsername"),
+        title: formData.get("title"),
+        requirement: formData.get("requirement"),
+        options,
+      });
+      proposalDialog.close();
+      await loadCatalogue("Proposal submitted.");
+    } catch (error) {
+      proposalError.textContent = error instanceof Error ? error.message : "The proposal could not be submitted.";
+      proposalError.hidden = false;
+      proposalSubmit.disabled = false;
+      proposalSubmit.textContent = "Submit proposal";
+    }
+  });
+  refreshProposalOptionControls();
 }
 
 function detailDefinition(label, value) {
@@ -513,6 +674,15 @@ async function loadDetail(assetCode, message = "") {
   renderDetail(item, members, { message });
 }
 
+async function loadCatalogue(message = "") {
+  const [equipment, proposals, members] = await Promise.all([
+    fetchJson("/api/v1/equipment"),
+    fetchJson("/api/v1/proposals"),
+    fetchJson("/api/v1/members"),
+  ]);
+  renderCatalogue(equipment, proposals, members, { message });
+}
+
 async function resolveNfcToken(token) {
   const { label } = await fetchJson(`/api/v1/nfc/${encodeURIComponent(token)}`);
   const itemUrl = new URL(window.location.href);
@@ -531,7 +701,7 @@ async function start() {
     if (assetCode) {
       await loadDetail(assetCode);
     } else {
-      renderCatalogue(await fetchJson("/api/v1/equipment"));
+      await loadCatalogue();
     }
   } catch (error) {
     renderError(error instanceof Error ? error.message : "Unknown inventory error.");

@@ -10,7 +10,7 @@ The authoritative schema is the ordered SQL under `worker/migrations/`.
 - `bundle_components`: descriptive constituents of a bundle with an individual
   photograph URL; components are not independently reservable.
 - `members`: active and historical lab member names. Deactivation preserves history.
-- `nfc_labels`: replaceable NFC associations and label-loss history.
+- `nfc_labels`: replaceable NFC associations, recoverable scan URLs and label-loss history.
 - `reservations`: advisory date ranges, sharing preference and flexibility notes.
 - `checkouts`: actual possession history and the current holder.
 - `equipment_files`: additional photographs and supporting public/admin documents.

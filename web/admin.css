@@ -96,6 +96,9 @@
 .admin-table td small { display: block; margin-top: 0.2rem; color: var(--muted); }
 .admin-status { display: inline-flex; padding: 0.3rem 0.5rem; border-radius: 999px; background: var(--image-bg); font-size: 0.72rem; font-weight: 750; text-transform: capitalize; white-space: nowrap; }
 .admin-status.status-active { color: var(--success); background: var(--success-bg); }
+.admin-status.status-proposed { color: var(--reserved); background: var(--reserved-bg); }
+.admin-status.status-ordered { color: var(--use); background: var(--use-bg); }
+.admin-status.status-received { color: var(--success); background: var(--success-bg); }
 .admin-status.status-maintenance,
 .admin-status.status-missing,
 .admin-status.status-retired { color: var(--danger); background: var(--danger-bg); }
@@ -135,6 +138,15 @@
 #components-editor { margin-top: 0.8rem; display: grid; gap: 0.8rem; }
 .component-editor { margin: 0; padding: 1rem; display: grid; gap: 0.8rem; background: var(--subtle); border: 1px solid var(--line); border-radius: 0.75rem; }
 .text-button { padding: 0; color: var(--danger); background: transparent; border: 0; font-weight: 750; cursor: pointer; }
+.proposal-review-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
+.proposal-review-options article { padding: 0.85rem; background: var(--subtle); border: 1px solid var(--line); border-radius: 0.7rem; }
+.proposal-review-options article div span { display: block; margin-top: 0.2rem; color: var(--muted); font-size: 0.76rem; }
+.proposal-review-options article a { display: inline-flex; margin-top: 0.55rem; color: var(--navy); font-size: 0.8rem; font-weight: 750; }
+.proposal-review-options article p { margin: 0.55rem 0 0; color: var(--muted); font-size: 0.8rem; line-height: 1.45; }
+.export-grid { margin-top: 1rem; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.export-grid article { padding: 1.2rem; background: var(--subtle); border: 1px solid var(--line); border-radius: 0.8rem; }
+.export-grid h3 { margin: 0; }
+.export-grid p { margin: 0.7rem 0 1rem; color: var(--muted); line-height: 1.55; }
 
 @media (max-width: 42rem) {
   .admin-badge { display: none; }
@@ -148,5 +160,7 @@
   .admin-panels { grid-template-columns: 1fr; }
   .management-heading { align-items: stretch; display: grid; }
   .admin-field-grid { grid-template-columns: 1fr; }
+  .proposal-review-options,
+  .export-grid { grid-template-columns: 1fr; }
   .dialog-actions { display: grid; }
 }

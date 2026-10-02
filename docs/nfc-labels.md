@@ -58,9 +58,10 @@ npm run nfc:create-label -- --asset-code ROB-003 --previous-status lost
 
 Use `replaced` instead of `lost` when the old sticker is still in hand. The
 command writes an SQL update and a separate `.url.txt` file under `outputs/`.
-The SQL stores only the token hash, retires the previous active association and
-records an audit event. Apply the SQL to D1, program the URL from the text file,
-then scan-test the new sticker. The old URL will stop resolving.
+The SQL stores the scan URL and its token hash, retires the previous active
+association and records an audit event. Apply the SQL to D1, program the URL
+from the text file, then scan-test the new sticker. The old URL will stop
+resolving.
 
 For a temporary deterministic replacement during the pilot, explicitly supply
 a new dummy token:
@@ -70,6 +71,7 @@ npm run nfc:create-label -- --asset-code ROB-003 --previous-status lost --token 
 ```
 
 Never reuse a token for a different item, publish a production manifest, or
-commit generated URL files. The administrator NFC labels module now creates or
-replaces an association and displays the new scan URL once. Use the command-line
-workflow for controlled bulk preparation or recovery work.
+commit generated URL files. The administrator NFC labels module creates or
+replaces an association and retains its scan URL for authenticated viewing,
+copying and protected operational exports. Use the command-line workflow for
+controlled bulk preparation or recovery work.

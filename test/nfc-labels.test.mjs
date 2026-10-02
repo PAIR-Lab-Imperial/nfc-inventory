@@ -24,13 +24,13 @@ test("dummy NFC labels have stable URLs and hashed database tokens", () => {
   assert.match(first[0].id, /^[a-f0-9-]{36}$/);
 });
 
-test("dummy label SQL is idempotent and does not store raw tokens", () => {
+test("dummy label SQL is idempotent and stores the recoverable scan URL", () => {
   const labels = buildDummyNfcLabels(equipment);
   const sql = generateDummyNfcSql(labels);
   assert.match(sql, /NOT EXISTS/);
-  assert.match(sql, /ON CONFLICT\(id\) DO NOTHING/);
+  assert.match(sql, /ON CONFLICT\(id\) DO UPDATE/);
   assert.match(sql, new RegExp(labels[0].tokenHash));
-  assert.doesNotMatch(sql, /demo-rob-003-v1/);
+  assert.match(sql, /\?t=demo-rob-003-v1/);
   assert.doesNotMatch(sql, /\bDELETE\b/i);
 });
 
@@ -42,12 +42,12 @@ test("dummy label manifest contains the programming URLs", () => {
   assert.match(manifest, /RØDE microphone bundle/);
 });
 
-test("replacement SQL retires the prior association and keeps the token hashed", () => {
+test("replacement SQL retires the prior association and stores its scan URL", () => {
   const label = buildNfcLabel({ assetCode: "ROB-003", token: "demo-rob-003-v2" });
   const sql = generateReplacementNfcSql(label, "lost");
   assert.match(sql, /SET status = 'lost'/);
   assert.match(sql, /nfc_label\.replaced/);
   assert.match(sql, new RegExp(label.tokenHash));
-  assert.doesNotMatch(sql, /demo-rob-003-v2/);
+  assert.match(sql, /\?t=demo-rob-003-v2/);
   assert.match(label.url, /\?t=demo-rob-003-v2$/);
 });

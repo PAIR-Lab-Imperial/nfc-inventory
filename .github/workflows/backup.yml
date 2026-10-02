@@ -1,0 +1,94 @@
+name: Encrypted D1 backup
+
+on:
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d1-production-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+      DB_NAME: pair-lab-nfc-inventory
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Check backup configuration
+        id: configuration
+        shell: bash
+        run: |
+          if [[ -n "$CLOUDFLARE_API_TOKEN" && -n "$CLOUDFLARE_ACCOUNT_ID" && -n "$BACKUP_PASSPHRASE" ]]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Backup skipped; configure CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID and BACKUP_PASSPHRASE."
+          fi
+      - name: Create backup metadata
+        if: steps.configuration.outputs.ready == 'true'
+        shell: bash
+        run: |
+          echo "backup_id=$(node -e 'console.log(require("crypto").randomUUID())')" >> "$GITHUB_ENV"
+          echo "backup_stamp=$(date -u +'%Y-%m-%dT%H-%M-%SZ')" >> "$GITHUB_ENV"
+      - name: Record backup start
+        if: steps.configuration.outputs.ready == 'true'
+        shell: bash
+        run: |
+          npx wrangler d1 execute "$DB_NAME" --remote --config worker/wrangler.jsonc --yes \
+            --command "INSERT INTO backup_runs (id, status, started_at) VALUES ('$backup_id', 'started', datetime('now'));"
+      - name: Export D1 database
+        if: steps.configuration.outputs.ready == 'true'
+        shell: bash
+        run: |
+          mkdir -p backups
+          npx wrangler d1 export "$DB_NAME" --remote --config worker/wrangler.jsonc \
+            --output "backups/$backup_id.sql"
+      - name: Compress and encrypt backup
+        if: steps.configuration.outputs.ready == 'true'
+        id: encrypt
+        shell: bash
+        run: |
+          gzip "backups/$backup_id.sql"
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 \
+            -in "backups/$backup_id.sql.gz" \
+            -out "backups/$backup_id.sql.gz.enc" \
+            -pass env:BACKUP_PASSPHRASE
+          echo "checksum=$(sha256sum "backups/$backup_id.sql.gz.enc" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+          rm "backups/$backup_id.sql.gz"
+      - name: Upload encrypted backup
+        if: steps.configuration.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pair-lab-d1-${{ env.backup_stamp }}
+          path: backups/${{ env.backup_id }}.sql.gz.enc
+          if-no-files-found: error
+          retention-days: 90
+      - name: Record backup completion
+        if: steps.configuration.outputs.ready == 'true'
+        shell: bash
+        run: |
+          npx wrangler d1 execute "$DB_NAME" --remote --config worker/wrangler.jsonc --yes \
+            --command "UPDATE backup_runs SET status = 'completed', storage_key = 'github-actions:${GITHUB_RUN_ID}:pair-lab-d1-$backup_stamp', checksum = '${{ steps.encrypt.outputs.checksum }}', completed_at = datetime('now') WHERE id = '$backup_id';"
+      - name: Record backup failure
+        if: failure() && steps.configuration.outputs.ready == 'true'
+        continue-on-error: true
+        shell: bash
+        run: |
+          npx wrangler d1 execute "$DB_NAME" --remote --config worker/wrangler.jsonc --yes \
+            --command "UPDATE backup_runs SET status = 'failed', error_message = 'GitHub Actions run ${GITHUB_RUN_ID} failed', completed_at = datetime('now') WHERE id = '$backup_id';"

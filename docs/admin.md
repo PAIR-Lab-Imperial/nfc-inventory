@@ -50,12 +50,17 @@ To change local credentials, edit the ignored `worker/.dev.vars` file and restar
 - Login responses never reveal whether the username or password was wrong.
 
 The dashboard provides protected modules for equipment and bundle editing,
-member maintenance, and NFC label creation or replacement. Equipment and every
-bundle component can use a separate public photo URL. New records default to the
-maintained placeholder when no reviewed image is available.
+member maintenance, proposal review, exports, and NFC label creation or
+replacement. Equipment and every bundle component can use a separate public photo
+URL. New records default to the maintained placeholder when no reviewed image is
+available.
 
-When a label is created or replaced, its full NFC scan URL is displayed once.
-Write or copy that URL before closing the result. D1 stores only the token hash
-and a short hint, so the full URL cannot be recovered later.
+When a label is created or replaced, its full NFC scan URL is stored with the
+association and remains visible to authenticated administrators. The NFC labels
+module can display and copy the active URL again, and the protected operational
+export includes label URLs for reprinting and recovery.
 
-Import/export, proposal and backup controls remain later modules.
+The inventory export follows the canonical workbook format used by the importer.
+The separate operational JSON export contains activity and audit history. See
+`proposals-and-exports.md`; backup scheduling and restore testing are covered in
+`backups.md`.

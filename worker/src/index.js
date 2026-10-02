@@ -19,6 +19,7 @@ const LOGIN_MAX_FAILURES = 5;
 const ITEM_TYPES = new Set(["individual", "bundle"]);
 const CONDITIONS = new Set(["good", "fair", "damaged", "unknown"]);
 const LIFECYCLE_STATUSES = new Set(["active", "maintenance", "missing", "retired"]);
+const PROPOSAL_STATUSES = new Set(["proposed", "ordered", "received"]);
 
 class RequestError extends Error {
   constructor(code, message, status = 400) {
@@ -50,7 +51,7 @@ function errorResponse(code, message, status, origin) {
 
 async function readJsonBody(request) {
   const contentLength = Number(request.headers.get("content-length") || 0);
-  if (Number.isFinite(contentLength) && contentLength > 10_000) {
+  if (Number.isFinite(contentLength) && contentLength > 30_000) {
     throw new RequestError("request_too_large", "Request body is too large", 413);
   }
   let body;
@@ -139,6 +140,15 @@ function purchasePriceMinor(body) {
   return Math.round(value * 100);
 }
 
+function optionalMoneyMinor(body, field) {
+  if (body[field] === null || body[field] === undefined || body[field] === "") return null;
+  const value = Number(body[field]);
+  if (!Number.isFinite(value) || value < 0 || Math.abs(value * 100 - Math.round(value * 100)) > 1e-7) {
+    throw new RequestError("invalid_body", `${field} must be a non-negative amount with at most two decimal places`);
+  }
+  return Math.round(value * 100);
+}
+
 function requireWriteOrigin(request, allowedOrigin) {
   const requestOrigin = request.headers.get("origin");
   if (requestOrigin && requestOrigin !== allowedOrigin) {
@@ -170,6 +180,19 @@ function decodeNfcToken(value) {
     throw new RequestError("invalid_nfc_token", "Invalid NFC label identifier");
   }
   return token;
+}
+
+function decodeRecordId(value, label = "record") {
+  let recordId;
+  try {
+    recordId = decodeURIComponent(value);
+  } catch {
+    throw new RequestError("invalid_record_id", `Invalid ${label} identifier`);
+  }
+  if (!/^[A-Za-z0-9-]{8,80}$/.test(recordId)) {
+    throw new RequestError("invalid_record_id", `Invalid ${label} identifier`);
+  }
+  return recordId;
 }
 
 async function sha256Hex(value) {
@@ -592,6 +615,141 @@ async function listMembers(env, origin) {
   );
 }
 
+function proposalInput(body) {
+  if (!Array.isArray(body.options) || body.options.length < 1 || body.options.length > 8) {
+    throw new RequestError("invalid_body", "options must contain between 1 and 8 equipment choices");
+  }
+  const options = body.options.map((option, index) => {
+    if (!option || typeof option !== "object" || Array.isArray(option)) {
+      throw new RequestError("invalid_body", `options[${index}] must be an object`);
+    }
+    const productUrl = optionalUrl(option, "productUrl");
+    if (!productUrl) throw new RequestError("invalid_body", `options[${index}].productUrl is required`);
+    const quotedPriceMinor = optionalMoneyMinor(option, "quotedPrice");
+    const currency = optionalText(option, "currency", 3)?.toUpperCase() || null;
+    if (currency && !/^[A-Z]{3}$/.test(currency)) {
+      throw new RequestError("invalid_body", `options[${index}].currency must be a three-letter code`);
+    }
+    if (quotedPriceMinor !== null && !currency) {
+      throw new RequestError("invalid_body", `options[${index}].currency is required when quotedPrice is provided`);
+    }
+    return {
+      id: crypto.randomUUID(),
+      name: requiredText(option, "name", 200),
+      productUrl,
+      supplier: optionalText(option, "supplier", 200),
+      quotedPriceMinor,
+      currency,
+      notes: optionalText(option, "notes", 1000),
+      displayOrder: index,
+    };
+  });
+  return {
+    title: requiredText(body, "title", 180),
+    requirement: requiredText(body, "requirement", 3000),
+    requestedByUsername: validUsername(requiredText(body, "requestedByUsername", 80)),
+    options,
+  };
+}
+
+function mapProposalRows(proposalRows, optionRows, { includeAdmin = false } = {}) {
+  const optionsByProposal = new Map();
+  for (const row of optionRows) {
+    const options = optionsByProposal.get(row.proposal_id) || [];
+    options.push({
+      id: row.id,
+      name: row.name,
+      productUrl: row.product_url,
+      supplier: row.supplier,
+      quotedPrice: row.quoted_price_minor === null ? null : row.quoted_price_minor / 100,
+      currency: row.currency,
+      notes: row.notes,
+      selected: row.id === row.selected_option_id,
+    });
+    optionsByProposal.set(row.proposal_id, options);
+  }
+  return proposalRows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    requirement: row.requirement,
+    requestedBy: row.requested_by,
+    requestedByUsername: includeAdmin ? row.requested_by_username : undefined,
+    status: row.status,
+    selectedOptionId: row.selected_option_id,
+    receivedAssetCode: row.received_asset_code,
+    adminNotes: includeAdmin ? row.admin_notes : undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    options: optionsByProposal.get(row.id) || [],
+  }));
+}
+
+async function listProposals(env, origin) {
+  const [proposalResult, optionResult] = await env.DB.batch([
+    env.DB.prepare(`
+      SELECT proposal.id, proposal.title, proposal.requirement, proposal.status,
+        proposal.selected_option_id, proposal.created_at, proposal.updated_at,
+        member.display_name AS requested_by,
+        received_equipment.asset_code AS received_asset_code
+      FROM proposals proposal
+      LEFT JOIN members member ON member.id = proposal.requested_by_member_id
+      LEFT JOIN equipment received_equipment ON received_equipment.id = proposal.received_equipment_id
+      ORDER BY CASE proposal.status WHEN 'proposed' THEN 0 WHEN 'ordered' THEN 1 ELSE 2 END,
+        proposal.updated_at DESC
+      LIMIT 100
+    `),
+    env.DB.prepare(`
+      SELECT option.id, option.proposal_id, option.name, option.product_url,
+        option.supplier, option.quoted_price_minor, option.currency, option.notes,
+        proposal.selected_option_id
+      FROM proposal_options option
+      JOIN proposals proposal ON proposal.id = option.proposal_id
+      ORDER BY option.proposal_id, option.display_order, option.name COLLATE NOCASE
+    `),
+  ]);
+  return json({ proposals: mapProposalRows(proposalResult.results, optionResult.results) }, {}, origin);
+}
+
+async function createProposal(request, env, origin) {
+  requireWriteOrigin(request, origin);
+  const data = proposalInput(await readJsonBody(request));
+  const member = await env.DB.prepare(`
+    SELECT id, username, display_name
+    FROM members
+    WHERE username = ?1 COLLATE NOCASE AND active = 1
+    LIMIT 1
+  `).bind(data.requestedByUsername).first();
+  if (!member) throw new RequestError("member_not_found", "Active member not found", 404);
+  const proposalId = crypto.randomUUID();
+  const now = new Date().toISOString();
+  const statements = [env.DB.prepare(`
+    INSERT INTO proposals (
+      id, title, requirement, requested_by_member_id, status, created_at, updated_at
+    ) VALUES (?1, ?2, ?3, ?4, 'proposed', ?5, ?5)
+  `).bind(proposalId, data.title, data.requirement, member.id, now)];
+  for (const option of data.options) {
+    statements.push(env.DB.prepare(`
+      INSERT INTO proposal_options (
+        id, proposal_id, name, product_url, supplier, quoted_price_minor,
+        currency, notes, display_order, created_at
+      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+    `).bind(
+      option.id, proposalId, option.name, option.productUrl, option.supplier,
+      option.quotedPriceMinor, option.currency, option.notes, option.displayOrder, now,
+    ));
+  }
+  statements.push(env.DB.prepare(`
+    INSERT INTO audit_events (
+      id, actor_type, actor_name, action, entity_type, entity_id, after_json, created_at
+    ) VALUES (?1, 'member', ?2, 'proposal.created', 'proposal', ?3, ?4, ?5)
+  `).bind(
+    crypto.randomUUID(), member.display_name, proposalId,
+    JSON.stringify({ title: data.title, requirement: data.requirement, optionCount: data.options.length }), now,
+  ));
+  await env.DB.batch(statements);
+  return json({ proposal: { id: proposalId, title: data.title, status: "proposed", createdAt: now } }, { status: 201 }, origin);
+}
+
 async function resolveNfcLabel(env, token, origin) {
   const tokenHash = await sha256Hex(token);
   const label = await env.DB.prepare(`
@@ -776,7 +934,7 @@ function adminEquipmentInput(body) {
 
 async function getAdminData(request, env, origin) {
   const admin = await requireAdmin(request, env);
-  const [equipmentResult, componentsResult, membersResult, labelsResult, categoriesResult] = await env.DB.batch([
+  const [equipmentResult, componentsResult, membersResult, labelsResult, categoriesResult, filesResult, proposalsResult, proposalOptionsResult] = await env.DB.batch([
     env.DB.prepare(`
       SELECT
         e.asset_code, e.name, cat.name AS category, e.item_type, e.manufacturer,
@@ -805,18 +963,45 @@ async function getAdminData(request, env, origin) {
       ORDER BY active DESC, display_name COLLATE NOCASE
     `),
     env.DB.prepare(`
-      SELECT label.id, e.asset_code, label.token_hint, label.status, label.notes,
-        label.created_at, label.retired_at
+      SELECT label.id, e.asset_code, label.token_hint, label.scan_url,
+        label.status, label.notes, label.created_at, label.retired_at
       FROM nfc_labels label
       JOIN equipment e ON e.id = label.equipment_id
       ORDER BY (label.status = 'active') DESC, e.asset_code COLLATE NOCASE, label.created_at DESC
       LIMIT 500
     `),
     env.DB.prepare(`
-      SELECT name, asset_code_prefix
+      SELECT name, asset_code_prefix, description
       FROM categories
       WHERE active = 1
       ORDER BY name COLLATE NOCASE
+    `),
+    env.DB.prepare(`
+      SELECT equipment.asset_code, file.kind, file.external_url, file.filename, file.description
+      FROM equipment_files file
+      JOIN equipment ON equipment.id = file.equipment_id
+      WHERE file.external_url IS NOT NULL
+      ORDER BY equipment.asset_code COLLATE NOCASE, file.created_at
+    `),
+    env.DB.prepare(`
+      SELECT proposal.id, proposal.title, proposal.requirement, proposal.status,
+        proposal.selected_option_id, proposal.admin_notes, proposal.created_at,
+        proposal.updated_at, member.username AS requested_by_username,
+        member.display_name AS requested_by,
+        received_equipment.asset_code AS received_asset_code
+      FROM proposals proposal
+      LEFT JOIN members member ON member.id = proposal.requested_by_member_id
+      LEFT JOIN equipment received_equipment ON received_equipment.id = proposal.received_equipment_id
+      ORDER BY proposal.updated_at DESC
+      LIMIT 200
+    `),
+    env.DB.prepare(`
+      SELECT option.id, option.proposal_id, option.name, option.product_url,
+        option.supplier, option.quoted_price_minor, option.currency, option.notes,
+        proposal.selected_option_id
+      FROM proposal_options option
+      JOIN proposals proposal ON proposal.id = option.proposal_id
+      ORDER BY option.proposal_id, option.display_order, option.name COLLATE NOCASE
     `),
   ]);
   const componentsByAsset = new Map();
@@ -834,9 +1019,15 @@ async function getAdminData(request, env, origin) {
     });
     componentsByAsset.set(component.asset_code, collection);
   }
+  const filesByAsset = new Map();
+  for (const file of filesResult.results) {
+    const collection = filesByAsset.get(file.asset_code) || [];
+    collection.push({ kind: file.kind, url: file.external_url, filename: file.filename, description: file.description });
+    filesByAsset.set(file.asset_code, collection);
+  }
   return json({
     admin,
-    categories: categoriesResult.results.map((row) => ({ name: row.name, assetCodePrefix: row.asset_code_prefix })),
+    categories: categoriesResult.results.map((row) => ({ name: row.name, assetCodePrefix: row.asset_code_prefix, description: row.description })),
     equipment: equipmentResult.results.map((row) => ({
       assetCode: row.asset_code,
       name: row.name,
@@ -858,6 +1049,7 @@ async function getAdminData(request, env, origin) {
       photoUrl: row.primary_photo_url,
       availability: row.availability,
       components: componentsByAsset.get(row.asset_code) || [],
+      files: filesByAsset.get(row.asset_code) || [],
     })),
     members: membersResult.results.map((row) => ({
       username: row.username,
@@ -869,11 +1061,13 @@ async function getAdminData(request, env, origin) {
       id: row.id,
       assetCode: row.asset_code,
       tokenHint: row.token_hint,
+      scanUrl: row.scan_url,
       status: row.status,
       notes: row.notes,
       createdAt: row.created_at,
       retiredAt: row.retired_at,
     })),
+    proposals: mapProposalRows(proposalsResult.results, proposalOptionsResult.results, { includeAdmin: true }),
   }, {}, origin);
 }
 
@@ -1037,26 +1231,163 @@ async function replaceAdminLabel(request, env, origin) {
   const tokenHint = token.slice(-6);
   const labelId = crypto.randomUUID();
   const now = new Date().toISOString();
+  const publicAppUrl = env.PUBLIC_APP_URL || `${origin}/nfc-inventory/`;
+  const scanUrl = new URL(`?t=${encodeURIComponent(token)}`, publicAppUrl).href;
   await env.DB.batch([
     env.DB.prepare(`
       UPDATE nfc_labels SET status = 'replaced', retired_at = ?1
       WHERE equipment_id = ?2 AND status = 'active'
     `).bind(now, equipment.id),
     env.DB.prepare(`
-      INSERT INTO nfc_labels (id, equipment_id, token_hash, token_hint, status, notes, created_at)
-      VALUES (?1, ?2, ?3, ?4, 'active', ?5, ?6)
-    `).bind(labelId, equipment.id, tokenHash, tokenHint, notes, now),
+      INSERT INTO nfc_labels (
+        id, equipment_id, token_hash, token_hint, scan_url, status, notes, created_at
+      ) VALUES (?1, ?2, ?3, ?4, ?5, 'active', ?6, ?7)
+    `).bind(labelId, equipment.id, tokenHash, tokenHint, scanUrl, notes, now),
     env.DB.prepare(`
       INSERT INTO audit_events (
         id, actor_type, actor_name, action, entity_type, entity_id, after_json, created_at
       ) VALUES (?1, 'admin', ?2, 'nfc_label.replaced', 'nfc_label', ?3, ?4, ?5)
     `).bind(crypto.randomUUID(), admin.username, labelId, JSON.stringify({ assetCode: equipment.asset_code, tokenHint }), now),
   ]);
-  const publicAppUrl = env.PUBLIC_APP_URL || `${origin}/nfc-inventory/`;
-  const scanUrl = new URL(`?t=${encodeURIComponent(token)}`, publicAppUrl).href;
   return json({
     label: { id: labelId, assetCode: equipment.asset_code, tokenHint, scanUrl, createdAt: now },
   }, { status: 201 }, origin);
+}
+
+async function saveAdminProposal(request, env, origin, proposalId) {
+  requireWriteOrigin(request, origin);
+  const admin = await requireAdmin(request, env);
+  const body = await readJsonBody(request);
+  const status = enumText(body, "status", PROPOSAL_STATUSES);
+  const selectedOptionId = optionalText(body, "selectedOptionId", 80);
+  const receivedAssetCodeText = optionalText(body, "receivedAssetCode", 20);
+  const receivedAssetCode = receivedAssetCodeText ? decodeAssetCode(receivedAssetCodeText) : null;
+  const adminNotes = optionalText(body, "adminNotes", 2000);
+  if (["ordered", "received"].includes(status) && !selectedOptionId) {
+    throw new RequestError("invalid_body", "Select an equipment option before marking the proposal ordered or received");
+  }
+  if (status === "received" && !receivedAssetCode) {
+    throw new RequestError("invalid_body", "receivedAssetCode is required when the proposal is received");
+  }
+  const existing = await env.DB.prepare(`
+    SELECT id, title, status, selected_option_id, received_equipment_id, admin_notes
+    FROM proposals
+    WHERE id = ?1
+    LIMIT 1
+  `).bind(proposalId).first();
+  if (!existing) throw new RequestError("proposal_not_found", "Proposal not found", 404);
+  let selectedOption = null;
+  if (selectedOptionId) {
+    selectedOption = await env.DB.prepare(`
+      SELECT id, name FROM proposal_options WHERE id = ?1 AND proposal_id = ?2 LIMIT 1
+    `).bind(selectedOptionId, proposalId).first();
+    if (!selectedOption) throw new RequestError("proposal_option_not_found", "Selected option does not belong to this proposal", 404);
+  }
+  let receivedEquipment = null;
+  if (receivedAssetCode) {
+    receivedEquipment = await env.DB.prepare(`
+      SELECT id, asset_code FROM equipment WHERE asset_code = ?1 COLLATE NOCASE LIMIT 1
+    `).bind(receivedAssetCode).first();
+    if (!receivedEquipment) throw new RequestError("equipment_not_found", "Received equipment record not found", 404);
+  }
+  const now = new Date().toISOString();
+  const after = {
+    status,
+    selectedOptionId: selectedOption?.id || null,
+    selectedOptionName: selectedOption?.name || null,
+    receivedAssetCode: receivedEquipment?.asset_code || null,
+    adminNotes,
+  };
+  await env.DB.batch([
+    env.DB.prepare(`
+      UPDATE proposals SET status = ?1, selected_option_id = ?2,
+        received_equipment_id = ?3, admin_notes = ?4, updated_at = ?5
+      WHERE id = ?6
+    `).bind(status, selectedOption?.id || null, receivedEquipment?.id || null, adminNotes, now, proposalId),
+    env.DB.prepare(`
+      INSERT INTO audit_events (
+        id, actor_type, actor_name, action, entity_type, entity_id,
+        before_json, after_json, created_at
+      ) VALUES (?1, 'admin', ?2, 'proposal.updated', 'proposal', ?3, ?4, ?5, ?6)
+    `).bind(crypto.randomUUID(), admin.username, proposalId, JSON.stringify(existing), JSON.stringify(after), now),
+  ]);
+  return json({ proposal: { id: proposalId, title: existing.title, ...after, updatedAt: now } }, {}, origin);
+}
+
+function parseAuditJson(value) {
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
+async function getAdminOperationalExport(request, env, origin) {
+  const admin = await requireAdmin(request, env);
+  const [reservationsResult, checkoutsResult, auditResult, backupsResult] = await env.DB.batch([
+    env.DB.prepare(`
+      SELECT reservation.id, equipment.asset_code, member.username, member.display_name,
+        reservation.starts_at, reservation.ends_at, reservation.can_share,
+        reservation.sharing_notes, reservation.status, reservation.created_at,
+        reservation.updated_at
+      FROM reservations reservation
+      JOIN equipment ON equipment.id = reservation.equipment_id
+      JOIN members member ON member.id = reservation.member_id
+      ORDER BY reservation.created_at DESC
+    `),
+    env.DB.prepare(`
+      SELECT checkout.id, equipment.asset_code, member.username, member.display_name,
+        checkout.checked_out_at, checkout.expected_return_at, checkout.returned_at,
+        checkout.checkout_notes, checkout.return_notes, checkout.created_at,
+        checkout.updated_at
+      FROM checkouts checkout
+      JOIN equipment ON equipment.id = checkout.equipment_id
+      JOIN members member ON member.id = checkout.member_id
+      ORDER BY checkout.created_at DESC
+    `),
+    env.DB.prepare(`
+      SELECT id, actor_type, actor_name, action, entity_type, entity_id,
+        before_json, after_json, created_at
+      FROM audit_events
+      ORDER BY created_at DESC
+      LIMIT 10000
+    `),
+    env.DB.prepare(`
+      SELECT id, status, storage_key, checksum, error_message, started_at, completed_at
+      FROM backup_runs
+      ORDER BY started_at DESC
+      LIMIT 500
+    `),
+  ]);
+  return json({
+    exportedAt: new Date().toISOString(),
+    exportedBy: admin.username,
+    reservations: reservationsResult.results.map((row) => ({
+      id: row.id, assetCode: row.asset_code, username: row.username,
+      memberName: row.display_name, startsAt: row.starts_at, endsAt: row.ends_at,
+      canShare: row.can_share === 1, sharingNotes: row.sharing_notes,
+      status: row.status, createdAt: row.created_at, updatedAt: row.updated_at,
+    })),
+    checkouts: checkoutsResult.results.map((row) => ({
+      id: row.id, assetCode: row.asset_code, username: row.username,
+      memberName: row.display_name, checkedOutAt: row.checked_out_at,
+      expectedReturnAt: row.expected_return_at, returnedAt: row.returned_at,
+      checkoutNotes: row.checkout_notes, returnNotes: row.return_notes,
+      createdAt: row.created_at, updatedAt: row.updated_at,
+    })),
+    auditEvents: auditResult.results.map((row) => ({
+      id: row.id, actorType: row.actor_type, actorName: row.actor_name,
+      action: row.action, entityType: row.entity_type, entityId: row.entity_id,
+      before: parseAuditJson(row.before_json), after: parseAuditJson(row.after_json),
+      createdAt: row.created_at,
+    })),
+    backupRuns: backupsResult.results.map((row) => ({
+      id: row.id, status: row.status, storageKey: row.storage_key,
+      checksum: row.checksum, errorMessage: row.error_message,
+      startedAt: row.started_at, completedAt: row.completed_at,
+    })),
+  }, {}, origin);
 }
 
 async function findEquipmentAndMember(env, assetCode, username) {
@@ -1259,7 +1590,7 @@ export default {
         {
           ok: true,
           service: "pair-lab-nfc-inventory-api",
-          version: "0.6.0",
+          version: "0.7.0",
         },
         {},
         allowedOrigin,
@@ -1286,6 +1617,14 @@ export default {
       return await listMembers(env, allowedOrigin);
     }
 
+    if (request.method === "GET" && url.pathname === "/api/v1/proposals") {
+      return await listProposals(env, allowedOrigin);
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/v1/proposals") {
+      return await createProposal(request, env, allowedOrigin);
+    }
+
     if (request.method === "POST" && url.pathname === "/api/v1/admin/login") {
       return await adminLogin(request, env, allowedOrigin);
     }
@@ -1300,6 +1639,10 @@ export default {
 
     if (request.method === "GET" && url.pathname === "/api/v1/admin/data") {
       return await getAdminData(request, env, allowedOrigin);
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/v1/admin/export/operations") {
+      return await getAdminOperationalExport(request, env, allowedOrigin);
     }
 
     if (request.method === "POST" && url.pathname === "/api/v1/admin/equipment") {
@@ -1322,6 +1665,16 @@ export default {
 
     if (request.method === "POST" && url.pathname === "/api/v1/admin/labels") {
       return await replaceAdminLabel(request, env, allowedOrigin);
+    }
+
+    const adminProposalMatch = /^\/api\/v1\/admin\/proposals\/([^/]+)$/.exec(url.pathname);
+    if (request.method === "PUT" && adminProposalMatch) {
+      return await saveAdminProposal(
+        request,
+        env,
+        allowedOrigin,
+        decodeRecordId(adminProposalMatch[1], "proposal"),
+      );
     }
 
     const nfcMatch = /^\/api\/v1\/nfc\/([^/]+)$/.exec(url.pathname);

@@ -71,9 +71,11 @@ not a secret.
 
 ## 3. Production automation
 
-Automated Worker deployment, scheduled exports and R2 backups will be added in a
-later phase. Their credentials must be stored as GitHub Actions or Cloudflare
-secrets.
+The Worker workflow runs the full test suite and deploys changed API code after a
+push to `main`. It safely skips deployment until the `CLOUDFLARE_ACCOUNT_ID` and
+`CLOUDFLARE_API_TOKEN` repository secrets exist. The encrypted D1 backup workflow
+also requires `BACKUP_PASSPHRASE`, runs weekly, and retains encrypted GitHub
+Actions artifacts for 90 days. See `backups.md` for setup and restore testing.
 
 ## 4. NFC rollout gate
 

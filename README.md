@@ -39,7 +39,10 @@ docs/                   Architecture and deployment documentation
 - [x] Password-protected administrator authentication and overview dashboard
 - [x] Administrator equipment, bundle, member and NFC-label management
 - [x] Public equipment and bundle-component photos, with source records and maintained placeholders where the model is ambiguous
-- [ ] Proposal workflow, exports and automated backups
+- [x] Member equipment proposals and administrator review workflow
+- [x] Round-trip inventory workbook and protected operational exports
+- [x] Guarded Worker deployment and encrypted weekly backup workflows
+- [ ] Add the GitHub repository secrets and verify the first scheduled backup
 - [ ] NFC label generation and rollout
 
 ## Local development
@@ -70,6 +73,7 @@ Public catalogue routes:
 - Browser item page: `?item={asset-code}`
 - NFC scan URL: `?t={label-token}`
 - Administrator dashboard: `/admin.html`
+- Equipment proposals: catalogue **Propose equipment** action
 
 See [docs/architecture.md](docs/architecture.md),
 [docs/data-model.md](docs/data-model.md), and
@@ -78,7 +82,9 @@ See [docs/architecture.md](docs/architecture.md),
 [docs/deployment.md](docs/deployment.md) for production setup. The temporary
 label manifest and phone-writing workflow are covered in
 [docs/nfc-labels.md](docs/nfc-labels.md). Administrator credential setup and
-rotation are covered in [docs/admin.md](docs/admin.md).
+rotation are covered in [docs/admin.md](docs/admin.md). Proposal review and exports
+are documented in [docs/proposals-and-exports.md](docs/proposals-and-exports.md),
+and backup setup and restore drills in [docs/backups.md](docs/backups.md).
 
 ## Data handling
 

@@ -107,6 +107,13 @@ Pages origin, payloads are size-limited and validated, and inactive equipment
 cannot be reserved or checked out. Origin checks are not a substitute for
 authentication; stronger controls can be added later if the workflow changes.
 
+## Equipment proposals
+
+`GET /api/v1/proposals` lists proposals and purchasing options for the public
+catalogue. `POST /api/v1/proposals` accepts a member username, title, requirement
+and one to eight options. Each option requires a name and HTTP(S) product URL;
+supplier, price, currency and notes are optional. New records start in `proposed`.
+
 ## Administrator authentication
 
 `POST /api/v1/admin/login`
@@ -128,7 +135,11 @@ equipment, categories, active members, labels, checkouts, reservations and
 proposal states. It does not expose the configured password or token-signing key.
 
 `GET /api/v1/admin/data` returns the authenticated management dataset for
-equipment, bundle components, members, categories and NFC label history.
+equipment, bundle components, members, categories, NFC label history and
+proposals.
+
+`GET /api/v1/admin/export/operations` returns reservations, checkouts, audit
+events and backup-run evidence for the protected operational export.
 
 `POST /api/v1/admin/equipment` creates an equipment record. `PUT
 /api/v1/admin/equipment/{asset-code}` updates the record and replaces its bundle
@@ -139,5 +150,11 @@ component list as one D1 batch. Asset codes remain immutable.
 notes while preserving the username and history.
 
 `POST /api/v1/admin/labels` retires any active association for an asset and
-returns a newly generated scan URL once. Only the new token hash and short hint
-are stored.
+returns a newly generated scan URL. The authenticated management dataset retains
+the full URL for viewing and protected exports; the token hash remains the value
+used by the public resolver.
+
+`PUT /api/v1/admin/proposals/{proposal-id}` records the proposal state, selected
+option, linked received equipment and administrator notes. Ordered and received
+proposals require a selected option; received proposals also require an equipment
+record.

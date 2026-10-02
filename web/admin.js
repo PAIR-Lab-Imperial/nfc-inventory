@@ -1,3 +1,5 @@
+import { buildInventoryWorkbook } from "./xlsx-export.js";
+
 const apiBaseUrl = window.NFC_INVENTORY_CONFIG?.apiBaseUrl?.replace(/\/$/, "");
 const storageKey = "pair-lab-admin-session";
 const adminApp = document.querySelector("#admin-app");
@@ -103,6 +105,22 @@ function formatDate(value) {
   return Number.isNaN(date.valueOf()) ? value : new Intl.DateTimeFormat("en-GB", { dateStyle: "medium" }).format(date);
 }
 
+function downloadFile(contents, filename, type) {
+  const blob = contents instanceof Blob ? contents : new Blob([contents], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function exportDateStamp() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 function equipmentView(data) {
   return `
     <section class="management-section" data-view-panel="equipment">
@@ -165,7 +183,7 @@ function labelsView(data) {
     <section class="management-section" data-view-panel="labels" hidden>
       <div class="management-heading">
         <div><p class="eyebrow">NFC associations</p><h2>Active labels</h2></div>
-        <p>New scan URLs are shown once. Program the sticker before closing the result.</p>
+        <p>Stored scan URLs can be viewed, copied and included in the protected operational export.</p>
       </div>
       <div class="admin-table-wrap">
         <table class="admin-table">
@@ -179,12 +197,69 @@ function labelsView(data) {
                   <td><strong>${escapeHtml(item.name)}</strong></td>
                   <td>${label ? `…${escapeHtml(label.tokenHint)}` : "No active label"}</td>
                   <td>${label ? escapeHtml(formatDate(label.createdAt)) : "—"}</td>
-                  <td><button class="secondary-button compact-button" type="button" data-replace-label="${escapeHtml(item.assetCode)}">${label ? "Replace label" : "Create label"}</button></td>
+                  <td>
+                    ${label?.scanUrl ? `<button class="secondary-button compact-button" type="button" data-view-label="${escapeHtml(item.assetCode)}">View URL</button>` : ""}
+                    <button class="secondary-button compact-button" type="button" data-replace-label="${escapeHtml(item.assetCode)}">${label ? "Replace label" : "Create label"}</button>
+                  </td>
                 </tr>
               `;
             }).join("")}
           </tbody>
         </table>
+      </div>
+    </section>
+  `;
+}
+
+function proposalsView(data) {
+  return `
+    <section class="management-section" data-view-panel="proposals" hidden>
+      <div class="management-heading">
+        <div><p class="eyebrow">Equipment ideas</p><h2>Proposals</h2></div>
+        <p>Review member suggestions, select an option, and track it from proposed to received.</p>
+      </div>
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead><tr><th>Proposal</th><th>Requested by</th><th>Options</th><th>Selected</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            ${data.proposals.length ? data.proposals.map((proposal) => {
+              const selected = proposal.options.find((option) => option.id === proposal.selectedOptionId);
+              return `
+                <tr>
+                  <td><strong>${escapeHtml(proposal.title)}</strong><small>${escapeHtml(proposal.requirement)}</small></td>
+                  <td>${escapeHtml(proposal.requestedBy || "—")}</td>
+                  <td>${proposal.options.length}</td>
+                  <td>${escapeHtml(selected?.name || "—")}</td>
+                  <td><span class="admin-status status-${escapeHtml(proposal.status)}">${escapeHtml(proposal.status)}</span></td>
+                  <td><button class="secondary-button compact-button" type="button" data-edit-proposal="${escapeHtml(proposal.id)}">Review</button></td>
+                </tr>
+              `;
+            }).join("") : `<tr><td colspan="6">No equipment proposals have been submitted.</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function exportsView() {
+  return `
+    <section class="management-section" data-view-panel="exports" hidden>
+      <div class="management-heading">
+        <div><p class="eyebrow">Protected downloads</p><h2>Exports</h2></div>
+        <p>Downloads may contain member names and administrator notes. Store them outside the public repository.</p>
+      </div>
+      <div class="export-grid">
+        <article>
+          <h3>Inventory workbook</h3>
+          <p>Equipment, bundle contents, members and categories in the same format used for validated imports.</p>
+          <button class="primary-button" id="export-inventory-workbook" type="button">Download workbook</button>
+        </article>
+        <article>
+          <h3>Operational data</h3>
+          <p>Reservations, checkouts, NFC label history, proposals, audit events and recorded backup runs.</p>
+          <button class="secondary-button" id="export-operational-data" type="button">Download JSON</button>
+        </article>
       </div>
     </section>
   `;
@@ -206,15 +281,22 @@ function renderDashboard(message = "") {
       ${summaryCard("Open checkouts", summary.openCheckoutCount)}
       ${summaryCard("Reservations", summary.activeReservationCount)}
       ${summaryCard("Categories", summary.categoryCount)}
+      ${summaryCard("Proposed", summary.proposals.proposed)}
+      ${summaryCard("Ordered", summary.proposals.ordered)}
+      ${summaryCard("Received", summary.proposals.received)}
     </dl>
     <nav class="admin-tabs" aria-label="Administration modules">
       <button type="button" data-admin-view="equipment">Equipment</button>
       <button type="button" data-admin-view="members">Members</button>
       <button type="button" data-admin-view="labels">NFC labels</button>
+      <button type="button" data-admin-view="proposals">Proposals</button>
+      <button type="button" data-admin-view="exports">Exports</button>
     </nav>
     ${equipmentView(currentData)}
     ${membersView(currentData)}
     ${labelsView(currentData)}
+    ${proposalsView(currentData)}
+    ${exportsView()}
     <dialog class="admin-dialog" id="admin-dialog"></dialog>
   `;
   bindDashboardEvents();
@@ -359,13 +441,32 @@ function openMemberDialog(member = null) {
   dialog.showModal();
 }
 
+function showStoredLabelDialog(assetCode) {
+  const dialog = document.querySelector("#admin-dialog");
+  const label = currentData.labels.find((item) => item.assetCode === assetCode && item.status === "active");
+  if (!label?.scanUrl) return;
+  dialog.innerHTML = `
+    <section class="admin-edit-form narrow-form">
+      <div class="dialog-heading"><div><p class="eyebrow">Active NFC label</p><h2>${escapeHtml(assetCode)} scan URL</h2></div><button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button></div>
+      <label><span>NFC scan URL</span><textarea id="stored-label-url" rows="4" readonly>${escapeHtml(label.scanUrl)}</textarea></label>
+      <div class="dialog-actions"><button class="secondary-button" type="button" id="copy-stored-label-url">Copy URL</button><button class="primary-button" type="button" data-close-dialog>Done</button></div>
+    </section>
+  `;
+  dialog.querySelector("#copy-stored-label-url").addEventListener("click", async (event) => {
+    await navigator.clipboard.writeText(label.scanUrl);
+    event.currentTarget.textContent = "Copied";
+  });
+  dialog.querySelectorAll("[data-close-dialog]").forEach((button) => button.addEventListener("click", () => dialog.close()));
+  dialog.showModal();
+}
+
 function openLabelDialog(assetCode) {
   const dialog = document.querySelector("#admin-dialog");
   const hasActive = currentData.labels.some((label) => label.assetCode === assetCode && label.status === "active");
   dialog.innerHTML = `
     <form method="dialog" id="label-form" class="admin-edit-form narrow-form">
       <div class="dialog-heading"><div><p class="eyebrow">NFC label</p><h2>${hasActive ? "Replace" : "Create"} ${escapeHtml(assetCode)} label</h2></div><button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button></div>
-      <p class="dialog-copy">${hasActive ? "The existing association will be retired immediately." : "A new association will be created."} The full scan URL is displayed only after creation.</p>
+      <p class="dialog-copy">${hasActive ? "The existing association will be retired immediately." : "A new association will be created."} The new scan URL will remain available to administrators.</p>
       <label><span>Label note</span><textarea name="notes" rows="3" maxlength="500" placeholder="For example: replacement after sticker detached"></textarea></label>
       <p class="form-error" id="admin-form-error" role="alert" hidden></p>
       <div class="dialog-actions"><button class="secondary-button" type="button" data-close-dialog>Cancel</button><button class="primary-button" type="submit">Generate scan URL</button></div>
@@ -381,7 +482,7 @@ function openLabelDialog(assetCode) {
       dialog.innerHTML = `
         <section class="admin-edit-form narrow-form">
           <div class="dialog-heading"><div><p class="eyebrow">Generated</p><h2>Program this NFC label</h2></div></div>
-          <p class="dialog-copy">Write this complete URL to the sticker for <strong>${escapeHtml(assetCode)}</strong>. It cannot be recovered later.</p>
+          <p class="dialog-copy">Write this complete URL to the sticker for <strong>${escapeHtml(assetCode)}</strong>. It is stored and can be viewed again from the NFC labels table.</p>
           <label><span>NFC scan URL</span><textarea id="generated-label-url" rows="4" readonly>${escapeHtml(label.scanUrl)}</textarea></label>
           <div class="dialog-actions"><button class="secondary-button" type="button" id="copy-label-url">Copy URL</button><button class="primary-button" type="button" id="finish-label">Done</button></div>
         </section>
@@ -394,6 +495,96 @@ function openLabelDialog(assetCode) {
     });
   });
   dialog.showModal();
+}
+
+function openProposalDialog(proposal) {
+  const dialog = document.querySelector("#admin-dialog");
+  const optionChoices = proposal.options.map((option) => `<option value="${escapeHtml(option.id)}" ${proposal.selectedOptionId === option.id ? "selected" : ""}>${escapeHtml(option.name)}${option.quotedPrice !== null ? ` — ${escapeHtml(`${option.currency} ${Number(option.quotedPrice).toFixed(2)}`)}` : ""}</option>`).join("");
+  const receivedEquipmentChoices = currentData.equipment.map((item) => `<option value="${escapeHtml(item.assetCode)}" ${proposal.receivedAssetCode === item.assetCode ? "selected" : ""}>${escapeHtml(item.assetCode)} — ${escapeHtml(item.name)}</option>`).join("");
+  dialog.innerHTML = `
+    <form method="dialog" id="proposal-admin-form" class="admin-edit-form">
+      <div class="dialog-heading"><div><p class="eyebrow">Equipment proposal</p><h2>${escapeHtml(proposal.title)}</h2></div><button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button></div>
+      <p class="dialog-copy"><strong>Requested by:</strong> ${escapeHtml(proposal.requestedBy || "Unknown member")}</p>
+      <p class="dialog-copy">${escapeHtml(proposal.requirement)}</p>
+      <div class="proposal-review-options">
+        ${proposal.options.map((option) => `<article><div><strong>${escapeHtml(option.name)}</strong>${option.supplier ? `<span>${escapeHtml(option.supplier)}</span>` : ""}</div><a href="${escapeHtml(option.productUrl)}" target="_blank" rel="noopener noreferrer">Open product link</a>${option.notes ? `<p>${escapeHtml(option.notes)}</p>` : ""}</article>`).join("")}
+      </div>
+      <div class="admin-field-grid">
+        <label><span>Status</span><select name="status" required>${["proposed", "ordered", "received"].map((status) => `<option value="${status}" ${proposal.status === status ? "selected" : ""}>${status}</option>`).join("")}</select></label>
+        <label><span>Selected option</span><select name="selectedOptionId"><option value="">No option selected</option>${optionChoices}</select></label>
+        <label><span>Received equipment record</span><select name="receivedAssetCode"><option value="">Not linked</option>${receivedEquipmentChoices}</select></label>
+      </div>
+      <label><span>Administrator notes</span><textarea name="adminNotes" rows="4" maxlength="2000">${escapeHtml(proposal.adminNotes || "")}</textarea></label>
+      <p class="form-error" id="admin-form-error" role="alert" hidden></p>
+      <div class="dialog-actions"><button class="secondary-button" type="button" data-close-dialog>Cancel</button><button class="primary-button" type="submit">Save proposal</button></div>
+    </form>
+  `;
+  const form = dialog.querySelector("#proposal-admin-form");
+  const status = form.elements.namedItem("status");
+  const selectedOption = form.elements.namedItem("selectedOptionId");
+  const receivedEquipment = form.elements.namedItem("receivedAssetCode");
+  const refreshRequirements = () => {
+    selectedOption.required = ["ordered", "received"].includes(status.value);
+    receivedEquipment.required = status.value === "received";
+  };
+  status.addEventListener("change", refreshRequirements);
+  refreshRequirements();
+  dialog.querySelectorAll("[data-close-dialog]").forEach((button) => button.addEventListener("click", () => dialog.close()));
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!form.reportValidity()) return;
+    const formData = new FormData(form);
+    await submitAdminForm(form, async () => {
+      await apiRequest(`/api/v1/admin/proposals/${encodeURIComponent(proposal.id)}`, {
+        method: "PUT",
+        authenticated: true,
+        body: {
+          status: formData.get("status"),
+          selectedOptionId: formData.get("selectedOptionId") || null,
+          receivedAssetCode: formData.get("receivedAssetCode") || null,
+          adminNotes: formData.get("adminNotes") || null,
+        },
+      });
+      dialog.close();
+      await loadDashboard(`${proposal.title} was updated.`);
+      showView("proposals");
+    });
+  });
+  dialog.showModal();
+}
+
+function exportInventoryWorkbook(button) {
+  button.disabled = true;
+  button.textContent = "Preparing…";
+  try {
+    const workbook = buildInventoryWorkbook(currentData);
+    downloadFile(workbook, `PAIR-Lab-Inventory-${exportDateStamp()}.xlsx`, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    button.textContent = "Downloaded";
+  } catch (error) {
+    button.textContent = error instanceof Error ? error.message : "Export failed";
+  }
+  window.setTimeout(() => { button.disabled = false; button.textContent = "Download workbook"; }, 1800);
+}
+
+async function exportOperationalData(button) {
+  button.disabled = true;
+  button.textContent = "Preparing…";
+  try {
+    const operations = await apiRequest("/api/v1/admin/export/operations", { authenticated: true });
+    const payload = {
+      ...operations,
+      categories: currentData.categories,
+      equipment: currentData.equipment,
+      members: currentData.members,
+      nfcLabels: currentData.labels,
+      proposals: currentData.proposals,
+    };
+    downloadFile(JSON.stringify(payload, null, 2), `PAIR-Lab-Operations-${exportDateStamp()}.json`, "application/json");
+    button.textContent = "Downloaded";
+  } catch (error) {
+    button.textContent = error instanceof Error ? error.message : "Export failed";
+  }
+  window.setTimeout(() => { button.disabled = false; button.textContent = "Download JSON"; }, 1800);
 }
 
 async function submitAdminForm(form, action) {
@@ -422,7 +613,11 @@ function bindDashboardEvents() {
   document.querySelectorAll("[data-edit-equipment]").forEach((button) => button.addEventListener("click", () => openEquipmentDialog(currentData.equipment.find((item) => item.assetCode === button.dataset.editEquipment))));
   document.querySelector("#add-member").addEventListener("click", () => openMemberDialog());
   document.querySelectorAll("[data-edit-member]").forEach((button) => button.addEventListener("click", () => openMemberDialog(currentData.members.find((member) => member.username === button.dataset.editMember))));
+  document.querySelectorAll("[data-view-label]").forEach((button) => button.addEventListener("click", () => showStoredLabelDialog(button.dataset.viewLabel)));
   document.querySelectorAll("[data-replace-label]").forEach((button) => button.addEventListener("click", () => openLabelDialog(button.dataset.replaceLabel)));
+  document.querySelectorAll("[data-edit-proposal]").forEach((button) => button.addEventListener("click", () => openProposalDialog(currentData.proposals.find((proposal) => proposal.id === button.dataset.editProposal))));
+  document.querySelector("#export-inventory-workbook").addEventListener("click", (event) => exportInventoryWorkbook(event.currentTarget));
+  document.querySelector("#export-operational-data").addEventListener("click", (event) => exportOperationalData(event.currentTarget));
 }
 
 async function loadDashboard(message = "") {
