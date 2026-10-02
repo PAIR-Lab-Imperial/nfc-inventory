@@ -19,6 +19,7 @@ const LOGIN_MAX_FAILURES = 5;
 const ITEM_TYPES = new Set(["individual", "bundle"]);
 const CONDITIONS = new Set(["good", "fair", "damaged", "unknown"]);
 const LIFECYCLE_STATUSES = new Set(["active", "maintenance", "missing", "retired"]);
+const ADMIN_AVAILABILITY_VALUES = new Set(["free", "reserved", "in_use"]);
 const PROPOSAL_STATUSES = new Set(["proposed", "ordered", "received"]);
 
 class RequestError extends Error {
@@ -941,7 +942,57 @@ async function getAdminData(request, env, origin) {
         e.model, e.serial_number, e.public_specifications, e.location, e.condition,
         e.lifecycle_status, e.purchase_date, e.purchase_price_minor, e.currency,
         e.supplier, e.public_notes, e.admin_notes, e.primary_photo_url,
-        state.availability
+        state.availability,
+        CASE state.availability
+          WHEN 'in_use' THEN (
+            SELECT member.display_name
+            FROM checkouts checkout
+            JOIN members member ON member.id = checkout.member_id
+            WHERE checkout.equipment_id = e.id AND checkout.returned_at IS NULL
+            ORDER BY checkout.checked_out_at DESC LIMIT 1
+          )
+          WHEN 'reserved' THEN (
+            SELECT member.display_name
+            FROM reservations reservation
+            JOIN members member ON member.id = reservation.member_id
+            WHERE reservation.equipment_id = e.id AND reservation.status = 'active'
+              AND reservation.starts_at <= strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+              AND (reservation.ends_at IS NULL OR reservation.ends_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+            ORDER BY reservation.starts_at DESC LIMIT 1
+          )
+        END AS current_user,
+        CASE state.availability
+          WHEN 'in_use' THEN (
+            SELECT member.username
+            FROM checkouts checkout
+            JOIN members member ON member.id = checkout.member_id
+            WHERE checkout.equipment_id = e.id AND checkout.returned_at IS NULL
+            ORDER BY checkout.checked_out_at DESC LIMIT 1
+          )
+          WHEN 'reserved' THEN (
+            SELECT member.username
+            FROM reservations reservation
+            JOIN members member ON member.id = reservation.member_id
+            WHERE reservation.equipment_id = e.id AND reservation.status = 'active'
+              AND reservation.starts_at <= strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+              AND (reservation.ends_at IS NULL OR reservation.ends_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+            ORDER BY reservation.starts_at DESC LIMIT 1
+          )
+        END AS current_username,
+        CASE state.availability
+          WHEN 'in_use' THEN (
+            SELECT checkout.expected_return_at FROM checkouts checkout
+            WHERE checkout.equipment_id = e.id AND checkout.returned_at IS NULL
+            ORDER BY checkout.checked_out_at DESC LIMIT 1
+          )
+          WHEN 'reserved' THEN (
+            SELECT reservation.ends_at FROM reservations reservation
+            WHERE reservation.equipment_id = e.id AND reservation.status = 'active'
+              AND reservation.starts_at <= strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+              AND (reservation.ends_at IS NULL OR reservation.ends_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+            ORDER BY reservation.starts_at DESC LIMIT 1
+          )
+        END AS availability_until
       FROM equipment e
       JOIN categories cat ON cat.id = e.category_id
       JOIN equipment_current_state state ON state.equipment_id = e.id
@@ -1048,6 +1099,9 @@ async function getAdminData(request, env, origin) {
       adminNotes: row.admin_notes,
       photoUrl: row.primary_photo_url,
       availability: row.availability,
+      currentUser: row.current_user,
+      currentUsername: row.current_username,
+      availabilityUntil: row.availability_until,
       components: componentsByAsset.get(row.asset_code) || [],
       files: filesByAsset.get(row.asset_code) || [],
     })),
@@ -1069,6 +1123,96 @@ async function getAdminData(request, env, origin) {
     })),
     proposals: mapProposalRows(proposalsResult.results, proposalOptionsResult.results, { includeAdmin: true }),
   }, {}, origin);
+}
+
+async function overrideAdminAvailability(request, env, origin, assetCode) {
+  requireWriteOrigin(request, origin);
+  const admin = await requireAdmin(request, env);
+  const body = await readJsonBody(request);
+  const availability = enumText(body, "availability", ADMIN_AVAILABILITY_VALUES);
+  const note = optionalText(body, "note", 500);
+  const canShare = optionalBoolean(body, "canShare", false);
+  const until = timestamp(body, "until");
+  const equipment = await env.DB.prepare(`
+    SELECT equipment.id, equipment.asset_code, equipment.name,
+      equipment.lifecycle_status, state.availability
+    FROM equipment
+    JOIN equipment_current_state state ON state.equipment_id = equipment.id
+    WHERE equipment.asset_code = ?1 COLLATE NOCASE
+    LIMIT 1
+  `).bind(assetCode).first();
+  if (!equipment) throw new RequestError("equipment_not_found", "Equipment not found", 404);
+  if (equipment.lifecycle_status !== "active") {
+    throw new RequestError("equipment_unavailable", "Only lifecycle-active equipment can receive an availability override", 409);
+  }
+
+  let member = null;
+  if (availability !== "free") {
+    const username = validUsername(requiredText(body, "username", 80));
+    member = await env.DB.prepare(`
+      SELECT id, username, display_name
+      FROM members
+      WHERE username = ?1 COLLATE NOCASE AND active = 1
+      LIMIT 1
+    `).bind(username).first();
+    if (!member) throw new RequestError("member_not_found", "Active member not found", 404);
+  }
+
+  const now = new Date().toISOString();
+  if (until && until <= now) throw new RequestError("invalid_time_range", "until must be later than now");
+  const statements = [
+    env.DB.prepare(`
+      UPDATE reservations
+      SET status = 'cancelled', updated_at = ?2
+      WHERE equipment_id = ?1 AND status = 'active'
+        AND starts_at <= ?2
+        AND (ends_at IS NULL OR ends_at > ?2)
+    `).bind(equipment.id, now),
+    env.DB.prepare(`
+      UPDATE checkouts
+      SET returned_at = ?2, return_notes = COALESCE(return_notes, ?3), updated_at = ?2
+      WHERE equipment_id = ?1 AND returned_at IS NULL
+    `).bind(equipment.id, now, note || "Closed by administrator availability override"),
+  ];
+  let createdRecordId = null;
+  if (availability === "reserved") {
+    createdRecordId = crypto.randomUUID();
+    statements.push(env.DB.prepare(`
+      INSERT INTO reservations (
+        id, equipment_id, member_id, starts_at, ends_at, can_share,
+        sharing_notes, status, created_at, updated_at
+      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'active', ?4, ?4)
+    `).bind(createdRecordId, equipment.id, member.id, now, until, canShare ? 1 : 0, note));
+  } else if (availability === "in_use") {
+    createdRecordId = crypto.randomUUID();
+    statements.push(env.DB.prepare(`
+      INSERT INTO checkouts (
+        id, equipment_id, member_id, checked_out_at, expected_return_at,
+        checkout_notes, created_at, updated_at
+      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?4, ?4)
+    `).bind(createdRecordId, equipment.id, member.id, now, until, note));
+  }
+  const after = {
+    assetCode: equipment.asset_code,
+    availability,
+    memberName: member?.display_name || null,
+    until,
+    canShare: availability === "reserved" && canShare,
+    note,
+    recordId: createdRecordId,
+  };
+  statements.push(env.DB.prepare(`
+    INSERT INTO audit_events (
+      id, actor_type, actor_name, action, entity_type, entity_id,
+      before_json, after_json, created_at
+    ) VALUES (?1, 'admin', ?2, 'equipment.availability_overridden', 'equipment', ?3, ?4, ?5, ?6)
+  `).bind(
+    crypto.randomUUID(), admin.username, equipment.id,
+    JSON.stringify({ assetCode: equipment.asset_code, availability: equipment.availability }),
+    JSON.stringify(after), now,
+  ));
+  await env.DB.batch(statements);
+  return json({ availability: after }, {}, origin);
 }
 
 async function saveAdminEquipment(request, env, origin, routeAssetCode = null) {
@@ -1605,7 +1749,7 @@ export default {
         {
           ok: true,
           service: "pair-lab-nfc-inventory-api",
-          version: "0.8.1",
+          version: "0.9.0",
         },
         {},
         allowedOrigin,
@@ -1662,6 +1806,16 @@ export default {
 
     if (request.method === "POST" && url.pathname === "/api/v1/admin/equipment") {
       return await saveAdminEquipment(request, env, allowedOrigin);
+    }
+
+    const adminAvailabilityMatch = /^\/api\/v1\/admin\/equipment\/([^/]+)\/availability$/.exec(url.pathname);
+    if (request.method === "PUT" && adminAvailabilityMatch) {
+      return await overrideAdminAvailability(
+        request,
+        env,
+        allowedOrigin,
+        decodeAssetCode(adminAvailabilityMatch[1]),
+      );
     }
 
     const adminEquipmentMatch = /^\/api\/v1\/admin\/equipment\/([^/]+)$/.exec(url.pathname);

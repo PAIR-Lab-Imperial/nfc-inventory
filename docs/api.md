@@ -138,7 +138,8 @@ proposal states. It does not expose the configured password or token-signing key
 
 `GET /api/v1/admin/data` returns the authenticated management dataset for
 equipment, bundle components, members, categories, NFC label history and
-proposals.
+proposals. Equipment rows include their current availability, current member
+when applicable, and the tentative reservation end or expected return time.
 
 `GET /api/v1/admin/export/operations` returns reservations, checkouts, audit
 events and backup-run evidence for the protected operational export.
@@ -146,6 +147,15 @@ events and backup-run evidence for the protected operational export.
 `POST /api/v1/admin/equipment` creates an equipment record. `PUT
 /api/v1/admin/equipment/{asset-code}` updates the record and replaces its bundle
 component list as one D1 batch. Asset codes remain immutable.
+
+`PUT /api/v1/admin/equipment/{asset-code}/availability` lets an administrator
+override the current member-entered availability for lifecycle-active equipment.
+The `availability` value is `free`, `reserved` or `in_use`. Reserved and in-use
+overrides also require an active member `username`; `until` and `note` are
+optional, while `canShare` applies to reservations. The operation cancels any
+reservation active at that moment, closes an open checkout, creates the selected
+replacement reservation or checkout where needed, and writes an audit event.
+Future reservations are preserved.
 
 `POST /api/v1/admin/members` creates a member. `PUT
 /api/v1/admin/members/{username}` updates the display name, active state and

@@ -112,6 +112,7 @@
 .empty-lifecycle-message { margin: 1rem 0 0; }
 .empty-table-cell { padding-block: 1.25rem !important; text-align: center; }
 .compact-button { min-height: 2.2rem; padding: 0.4rem 0.65rem; font-size: 0.76rem; white-space: nowrap; }
+.table-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.4rem; }
 
 .admin-dialog { width: min(66rem, calc(100% - 2rem)); max-height: calc(100vh - 2rem); padding: 0; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 1rem; box-shadow: var(--dialog-shadow); }
 .admin-dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(3px); }

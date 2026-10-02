@@ -93,7 +93,7 @@ function mutationEnvironment({ openCheckout = null, currentCheckout = null, nfcL
     },
     members: [{ id: "member-1", username: "ranul", display_name: "Ranul" }],
     categoryRecord: { id: "category-1", asset_code_prefix: "ROB" },
-    equipmentRecord: { id: "equipment-1", asset_code: "ROB-003", name: "Reachy Mini Wireless" },
+    equipmentRecord: { id: "equipment-1", asset_code: "ROB-003", name: "Reachy Mini Wireless", lifecycle_status: "active", availability: "free" },
     memberRecord: { id: "member-1", display_name: "Ranul", active: 1, notes: null },
     adminEquipment: [{
       asset_code: "ROB-003", name: "Reachy Mini Wireless", category: "Robots", item_type: "bundle",
@@ -659,4 +659,34 @@ test("administrator generates and stores a recoverable replacement NFC URL", asy
   assert.match(writes[0].query, /status = 'replaced'/);
   assert.match(writes[1].parameters[2], /^[a-f0-9]{64}$/);
   assert.equal(writes[1].parameters.includes(body.label.scanUrl), true);
+});
+
+test("administrator availability override replaces conflicting member state and audits the change", async () => {
+  const { environment, state } = mutationEnvironment();
+  const token = await loginAdmin(environment);
+  const response = await worker.fetch(new Request("https://api.example/api/v1/admin/equipment/ROB-003/availability", {
+    method: "PUT",
+    headers: {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+      origin: "https://pair-lab-imperial.github.io",
+    },
+    body: JSON.stringify({
+      availability: "reserved",
+      username: "ranul",
+      until: "2099-10-04T17:00:00.000Z",
+      canShare: true,
+      note: "Administrator override",
+    }),
+  }), environment);
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.availability.availability, "reserved");
+  assert.equal(body.availability.memberName, "Ranul");
+  const writes = state.writes.at(-1);
+  assert.equal(writes.length, 4);
+  assert.match(writes[0].query, /UPDATE reservations/);
+  assert.match(writes[1].query, /UPDATE checkouts/);
+  assert.match(writes[2].query, /INSERT INTO reservations/);
+  assert.match(writes[3].query, /availability_overridden/);
 });

@@ -105,6 +105,20 @@ function formatDate(value) {
   return Number.isNaN(date.valueOf()) ? value : new Intl.DateTimeFormat("en-GB", { dateStyle: "medium" }).format(date);
 }
 
+function formatDateTime(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.valueOf()) ? value : new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short" }).format(date);
+}
+
+function localDateTimeValue(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.valueOf())) return "";
+  const local = new Date(date.valueOf() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+}
+
 const availabilityLabels = Object.freeze({
   free: "Available",
   reserved: "Reserved",
@@ -147,8 +161,8 @@ function equipmentView(data) {
                 <td><strong>${escapeHtml(item.name)}</strong>${item.model ? `<small>${escapeHtml(item.model)}</small>` : ""}</td>
                 <td>${escapeHtml(item.category)}</td>
                 <td>${escapeHtml(item.itemType === "bundle" ? `Bundle (${item.components.length})` : "Individual")}</td>
-                <td><span class="admin-status status-${escapeHtml(item.availability)}">${escapeHtml(availabilityLabels[item.availability] || item.availability)}</span></td>
-                <td><button class="secondary-button compact-button" type="button" data-edit-equipment="${escapeHtml(item.assetCode)}">Edit</button></td>
+                <td><span class="admin-status status-${escapeHtml(item.availability)}">${escapeHtml(availabilityLabels[item.availability] || item.availability)}</span>${item.currentUser ? `<small>${escapeHtml(item.currentUser)}${item.availabilityUntil ? ` · until ${escapeHtml(formatDateTime(item.availabilityUntil))}` : ""}</small>` : ""}</td>
+                <td><div class="table-actions"><button class="secondary-button compact-button" type="button" data-edit-availability="${escapeHtml(item.assetCode)}">Availability</button><button class="secondary-button compact-button" type="button" data-edit-equipment="${escapeHtml(item.assetCode)}">Edit record</button></div></td>
               </tr>
             `).join("") || `<tr><td colspan="7" class="empty-table-cell">No lifecycle-active equipment records.</td></tr>`}
           </tbody>
@@ -441,6 +455,66 @@ function openEquipmentDialog(item = null) {
   dialog.showModal();
 }
 
+function openAvailabilityDialog(item) {
+  const dialog = document.querySelector("#admin-dialog");
+  const members = currentData.members.filter((member) => member.active);
+  const memberOptions = members.map((member) => `<option value="${escapeHtml(member.username)}" ${member.username === item.currentUsername ? "selected" : ""}>${escapeHtml(member.displayName)}</option>`).join("");
+  dialog.innerHTML = `
+    <form method="dialog" id="availability-form" class="admin-edit-form narrow-form">
+      <div class="dialog-heading"><div><p class="eyebrow">Administrator override</p><h2>${escapeHtml(item.assetCode)} availability</h2></div><button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button></div>
+      <p class="dialog-copy">Current state: <strong>${escapeHtml(availabilityLabels[item.availability] || item.availability)}</strong>${item.currentUser ? ` · ${escapeHtml(item.currentUser)}` : ""}. Saving replaces conflicting active reservations or checkouts and records an audit event.</p>
+      <label><span>Availability</span><select name="availability" required><option value="free" ${item.availability === "free" ? "selected" : ""}>Available</option><option value="reserved" ${item.availability === "reserved" ? "selected" : ""}>Reserved</option><option value="in_use" ${item.availability === "in_use" ? "selected" : ""}>In use</option></select></label>
+      <div id="availability-member-fields">
+        <label><span>Member</span><select name="username"><option value="">Select member</option>${memberOptions}</select></label>
+      </div>
+      <div id="availability-until-field">
+        ${field("Tentative end or expected return", "until", localDateTimeValue(item.availabilityUntil), "type=datetime-local")}
+      </div>
+      <label class="check-field" id="availability-share-field"><input name="canShare" type="checkbox"><span>Member may be able to share during the reservation</span></label>
+      <label><span>Override note <small>(optional)</small></span><textarea name="note" rows="3" maxlength="500" placeholder="Reason for the administrator override"></textarea></label>
+      <p class="form-error" id="admin-form-error" role="alert" hidden></p>
+      <div class="dialog-actions"><button class="secondary-button" type="button" data-close-dialog>Cancel</button><button class="primary-button" type="submit">Save availability</button></div>
+    </form>
+  `;
+  const form = dialog.querySelector("#availability-form");
+  const availability = form.elements.namedItem("availability");
+  const username = form.elements.namedItem("username");
+  const memberFields = dialog.querySelector("#availability-member-fields");
+  const untilField = dialog.querySelector("#availability-until-field");
+  const shareField = dialog.querySelector("#availability-share-field");
+  const refreshFields = () => {
+    const needsMember = availability.value !== "free";
+    memberFields.hidden = !needsMember;
+    untilField.hidden = !needsMember;
+    shareField.hidden = availability.value !== "reserved";
+    username.required = needsMember;
+  };
+  availability.addEventListener("change", refreshFields);
+  refreshFields();
+  dialog.querySelectorAll("[data-close-dialog]").forEach((button) => button.addEventListener("click", () => dialog.close()));
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!form.reportValidity()) return;
+    const formData = new FormData(form);
+    await submitAdminForm(form, async () => {
+      await apiRequest(`/api/v1/admin/equipment/${encodeURIComponent(item.assetCode)}/availability`, {
+        method: "PUT",
+        authenticated: true,
+        body: {
+          availability: formData.get("availability"),
+          username: formData.get("username") || null,
+          until: formData.get("until") ? new Date(formData.get("until")).toISOString() : null,
+          canShare: formData.get("canShare") === "on",
+          note: formData.get("note") || null,
+        },
+      });
+      dialog.close();
+      await loadDashboard(`${item.assetCode} availability was overridden.`);
+    });
+  });
+  dialog.showModal();
+}
+
 function openMemberDialog(member = null) {
   const dialog = document.querySelector("#admin-dialog");
   dialog.innerHTML = `
@@ -641,6 +715,7 @@ function bindDashboardEvents() {
   });
   document.querySelectorAll("[data-admin-view]").forEach((button) => button.addEventListener("click", () => showView(button.dataset.adminView)));
   document.querySelector("#add-equipment").addEventListener("click", () => openEquipmentDialog());
+  document.querySelectorAll("[data-edit-availability]").forEach((button) => button.addEventListener("click", () => openAvailabilityDialog(currentData.equipment.find((item) => item.assetCode === button.dataset.editAvailability))));
   document.querySelectorAll("[data-edit-equipment]").forEach((button) => button.addEventListener("click", () => openEquipmentDialog(currentData.equipment.find((item) => item.assetCode === button.dataset.editEquipment))));
   document.querySelector("#add-member").addEventListener("click", () => openMemberDialog());
   document.querySelectorAll("[data-edit-member]").forEach((button) => button.addEventListener("click", () => openMemberDialog(currentData.members.find((member) => member.username === button.dataset.editMember))));
