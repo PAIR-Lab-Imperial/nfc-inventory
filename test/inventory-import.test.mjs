@@ -10,15 +10,15 @@ test("canonical workbook validates and contains the expected seed records", asyn
   assert.deepEqual(report.errors, []);
   assert.deepEqual(report.counts, {
     categories: 13,
-    equipment: 77,
+    equipment: 79,
     components: 30,
     members: 6,
     files: 33,
   });
   assert.deepEqual(report.warnings, []);
   assert.equal(data.equipment.filter((item) => item.name === "Azure Kinect DK").length, 2);
-  assert.equal(data.equipment.filter((item) => item.primaryPhotoUrl).length, 77);
-  assert.equal(data.equipment.filter((item) => !item.primaryPhotoUrl.endsWith("equipment-placeholder.svg")).length, 55);
+  assert.equal(data.equipment.filter((item) => item.primaryPhotoUrl).length, 79);
+  assert.equal(data.equipment.filter((item) => !item.primaryPhotoUrl.endsWith("equipment-placeholder.svg")).length, 57);
   assert.equal(data.components.filter((item) => item.photoUrl).length, 30);
   assert.equal(data.components.filter((item) => !item.photoUrl.endsWith("equipment-placeholder.svg")).length, 20);
   assert.equal(data.equipment.some((item) => item.assetCode === "CAM-005"), false);
@@ -33,6 +33,15 @@ test("canonical workbook validates and contains the expected seed records", asyn
   assert.equal(data.equipment.filter((item) => item.model === "27MR400-B").length, 3);
   assert.equal(data.equipment.filter((item) => item.model === "C26M2020UK").length, 4);
   assert.equal(data.equipment.filter((item) => item.model === "MK270").length, 5);
+  assert.deepEqual(
+    data.equipment
+      .filter((item) => item.model === "DMT03")
+      .map((item) => [item.assetCode, item.name, item.manufacturer]),
+    [
+      ["AUD-003", "DJI Mic 3 Transmitter", "DJI"],
+      ["AUD-004", "DJI Mic 3 Transmitter", "DJI"],
+    ],
+  );
   assert.deepEqual(
     ["MNT-003", "MNT-004", "MNT-005", "MNT-008", "MNT-009"].map((assetCode) => {
       const item = data.equipment.find((equipment) => equipment.assetCode === assetCode);
