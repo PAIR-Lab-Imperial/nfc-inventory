@@ -34,7 +34,7 @@ docs/                   Architecture and deployment documentation
 - [x] Production D1 database and Worker foundation deployed
 - [x] Validated workbook importer and initial production inventory seed
 - [x] Public equipment catalogue and item record pages
-- [ ] NFC token resolution and label management
+- [x] NFC token resolution and temporary dummy-label manifest
 - [x] Member reservations and equipment checkout/return
 - [ ] Administrator authentication and dashboard
 - [ ] Proposal workflow, exports and automated backups
@@ -64,13 +64,17 @@ Public catalogue routes:
 
 - Catalogue: `/api/v1/equipment`
 - Equipment record: `/api/v1/equipment/{asset-code}`
+- NFC resolver: `/api/v1/nfc/{label-token}`
 - Browser item page: `?item={asset-code}`
+- NFC scan URL: `?t={label-token}`
 
 See [docs/architecture.md](docs/architecture.md),
 [docs/data-model.md](docs/data-model.md), and
 [docs/importing.md](docs/importing.md) before changing inventory data. See
 [docs/api.md](docs/api.md) for the public API and
-[docs/deployment.md](docs/deployment.md) for production setup.
+[docs/deployment.md](docs/deployment.md) for production setup. The temporary
+label manifest and phone-writing workflow are covered in
+[docs/nfc-labels.md](docs/nfc-labels.md).
 
 ## Data handling
 

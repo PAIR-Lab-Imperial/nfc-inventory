@@ -1,6 +1,6 @@
 {
   "name": "pair-lab-nfc-inventory",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "description": "PAIR Lab NFC equipment inventory",
@@ -11,6 +11,8 @@
     "test": "node --test",
     "inventory:validate": "node scripts/import-inventory.mjs --validate-only",
     "inventory:build-sql": "node scripts/import-inventory.mjs",
+    "nfc:build-dummy-labels": "node scripts/build-dummy-nfc-labels.mjs",
+    "nfc:create-label": "node scripts/create-nfc-label.mjs",
     "worker:dev": "wrangler dev --config worker/wrangler.jsonc",
     "worker:deploy": "wrangler deploy --config worker/wrangler.jsonc",
     "db:migrate:local": "wrangler d1 migrations apply pair-lab-nfc-inventory --local --config worker/wrangler.jsonc",

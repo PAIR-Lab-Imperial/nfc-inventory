@@ -8,7 +8,7 @@ if (!baseUrl) {
 const checks = [
   {
     path: "/health",
-    validate: (body) => body.ok === true && body.version === "0.3.0",
+    validate: (body) => body.ok === true && body.version === "0.4.0",
     summarize: (body) => ({ ok: body.ok, version: body.version }),
   },
   {
@@ -20,6 +20,11 @@ const checks = [
     path: "/api/v1/members",
     validate: (body) => Array.isArray(body.members) && body.members.length === 6,
     summarize: (body) => ({ members: body.members?.length }),
+  },
+  {
+    path: "/api/v1/nfc/demo-rob-003-v1",
+    validate: (body) => body.label?.assetCode === "ROB-003",
+    summarize: (body) => ({ assetCode: body.label?.assetCode, tokenHint: body.label?.tokenHint }),
   },
   {
     path: "/api/v1/equipment",

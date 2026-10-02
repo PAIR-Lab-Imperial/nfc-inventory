@@ -30,6 +30,10 @@ Only its hash and a short, non-secret hint are retained in D1. Replacing a lost
 label creates a new label record and retires the old one; it does not modify the
 equipment record or asset code.
 
+During the pilot, deterministic IDs such as `demo-rob-003-v1` are used so the
+complete workflow can be tested without consuming or permanently locking tags.
+They follow the same hash-and-resolution path but are not production secrets.
+
 ## Availability rules
 
 Availability is derived rather than manually edited:

@@ -102,6 +102,24 @@ function decodeAssetCode(value) {
   return assetCode;
 }
 
+function decodeNfcToken(value) {
+  let token;
+  try {
+    token = decodeURIComponent(value);
+  } catch {
+    throw new RequestError("invalid_nfc_token", "Invalid NFC label identifier");
+  }
+  if (!/^[A-Za-z0-9_-]{8,128}$/.test(token)) {
+    throw new RequestError("invalid_nfc_token", "Invalid NFC label identifier");
+  }
+  return token;
+}
+
+async function sha256Hex(value) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 function nullableBoolean(value) {
   return value === null || value === undefined ? null : value === 1;
 }
@@ -427,6 +445,30 @@ async function listMembers(env, origin) {
   );
 }
 
+async function resolveNfcLabel(env, token, origin) {
+  const tokenHash = await sha256Hex(token);
+  const label = await env.DB.prepare(`
+    SELECT equipment.asset_code, label.token_hint
+    FROM nfc_labels label
+    JOIN equipment ON equipment.id = label.equipment_id
+    WHERE label.token_hash = ?1 AND label.status = 'active'
+    LIMIT 1
+  `).bind(tokenHash).first();
+  if (!label) {
+    throw new RequestError("nfc_label_not_found", "This NFC label is unknown, replaced, or no longer active", 404);
+  }
+  return json(
+    {
+      label: {
+        assetCode: label.asset_code,
+        tokenHint: label.token_hint,
+      },
+    },
+    {},
+    origin,
+  );
+}
+
 async function findEquipmentAndMember(env, assetCode, username) {
   const [equipmentResult, memberResult] = await env.DB.batch([
     env.DB.prepare(`
@@ -627,7 +669,7 @@ export default {
         {
           ok: true,
           service: "pair-lab-nfc-inventory-api",
-          version: "0.3.0",
+          version: "0.4.0",
         },
         {},
         allowedOrigin,
@@ -652,6 +694,12 @@ export default {
 
     if (request.method === "GET" && url.pathname === "/api/v1/members") {
       return await listMembers(env, allowedOrigin);
+    }
+
+    const nfcMatch = /^\/api\/v1\/nfc\/([^/]+)$/.exec(url.pathname);
+    if (request.method === "GET" && nfcMatch) {
+      const token = decodeNfcToken(nfcMatch[1]);
+      return await resolveNfcLabel(env, token, allowedOrigin);
     }
 
     const equipmentActionMatch = /^\/api\/v1\/equipment\/([^/]+)\/(reservations|checkouts|return)$/.exec(url.pathname);

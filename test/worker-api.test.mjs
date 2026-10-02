@@ -47,6 +47,10 @@ class MutationStatement extends FakeStatement {
   }
 
   async first() {
+    if (this.query.includes("FROM nfc_labels")) {
+      this.state.lastNfcHash = this.parameters[0];
+      return this.state.nfcLabel;
+    }
     if (this.query.includes("JOIN equipment ON equipment.id = checkout.equipment_id")) {
       return this.state.currentCheckout;
     }
@@ -55,10 +59,12 @@ class MutationStatement extends FakeStatement {
   }
 }
 
-function mutationEnvironment({ openCheckout = null, currentCheckout = null } = {}) {
+function mutationEnvironment({ openCheckout = null, currentCheckout = null, nfcLabel = null } = {}) {
   const state = {
     openCheckout,
     currentCheckout,
+    nfcLabel,
+    lastNfcHash: null,
     members: [{ id: "member-1", username: "ranul", display_name: "Ranul" }],
     writes: [],
   };
@@ -193,6 +199,39 @@ test("active members are listed for the reservation selector", async () => {
   const response = await worker.fetch(new Request("https://api.example/api/v1/members"), environment);
   assert.equal(response.status, 200);
   assert.deepEqual((await response.json()).members, [{ username: "ranul", displayName: "Ranul" }]);
+});
+
+test("active NFC labels resolve by hash without exposing the raw token", async () => {
+  const { environment, state } = mutationEnvironment({
+    nfcLabel: { asset_code: "ROB-003", token_hint: "-003-v1" },
+  });
+  const response = await worker.fetch(
+    new Request("https://api.example/api/v1/nfc/demo-rob-003-v1"),
+    environment,
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    label: { assetCode: "ROB-003", tokenHint: "-003-v1" },
+  });
+  assert.match(state.lastNfcHash, /^[a-f0-9]{64}$/);
+  assert.notEqual(state.lastNfcHash, "demo-rob-003-v1");
+});
+
+test("unknown and malformed NFC labels return stable errors", async () => {
+  const { environment } = mutationEnvironment();
+  const missing = await worker.fetch(
+    new Request("https://api.example/api/v1/nfc/demo-rob-999-v1"),
+    environment,
+  );
+  assert.equal(missing.status, 404);
+  assert.equal((await missing.json()).error.code, "nfc_label_not_found");
+
+  const invalid = await worker.fetch(
+    new Request("https://api.example/api/v1/nfc/short"),
+    environment,
+  );
+  assert.equal(invalid.status, 400);
+  assert.equal((await invalid.json()).error.code, "invalid_nfc_token");
 });
 
 test("reservation creation accepts overlapping advisory bookings and audits the write", async () => {

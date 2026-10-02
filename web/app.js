@@ -505,9 +505,21 @@ async function loadDetail(assetCode, message = "") {
   renderDetail(item, members, { message });
 }
 
+async function resolveNfcToken(token) {
+  const { label } = await fetchJson(`/api/v1/nfc/${encodeURIComponent(token)}`);
+  const itemUrl = new URL(window.location.href);
+  itemUrl.search = "";
+  itemUrl.searchParams.set("item", label.assetCode);
+  window.history.replaceState({}, "", itemUrl);
+  return label.assetCode;
+}
+
 async function start() {
-  const assetCode = new URLSearchParams(window.location.search).get("item")?.trim();
+  const searchParams = new URLSearchParams(window.location.search);
+  const nfcToken = searchParams.get("t")?.trim();
+  let assetCode = searchParams.get("item")?.trim();
   try {
+    if (nfcToken) assetCode = await resolveNfcToken(nfcToken);
     if (assetCode) {
       await loadDetail(assetCode);
     } else {

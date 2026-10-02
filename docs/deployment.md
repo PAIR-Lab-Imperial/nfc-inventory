@@ -9,7 +9,8 @@ Current production foundation:
 - Worker API: `https://pair-lab-nfc-inventory-api.pair-lab-nfc-inventory.workers.dev/`
 - D1 database: `pair-lab-nfc-inventory` in Western Europe
 - Initial seed: 9 categories, 31 equipment units, 3 bundle components and 6 members
-- Public catalogue: read-only equipment list and item record endpoints
+- Public catalogue, member actions and NFC token resolution
+- Temporary NFC seed: one deterministic dummy association per equipment record
 
 ## 1. GitHub Pages
 
@@ -71,3 +72,13 @@ Do not permanently lock or mass-program labels until all of the following are tr
 - the first inventory import has been verified;
 - several unlocked pilot labels have been tested on both Android and iPhone;
 - replacement of a lost label has been tested end to end.
+
+Generate and apply the temporary pilot associations with:
+
+```bash
+npm run nfc:build-dummy-labels
+npx wrangler d1 execute pair-lab-nfc-inventory --remote \
+  --config worker/wrangler.jsonc --file outputs/dummy-nfc-labels.sql --yes
+```
+
+See `docs/nfc-labels.md` before programming or replacing any sticker.
