@@ -25,6 +25,19 @@ test("canonical workbook validates and contains the expected seed records", asyn
   assert.equal(data.equipment.filter((item) => item.model === "27MR400-B").length, 3);
   assert.equal(data.equipment.filter((item) => item.model === "C26M2020UK").length, 4);
   assert.equal(data.equipment.filter((item) => item.model === "MK270").length, 5);
+  assert.deepEqual(
+    ["MNT-003", "MNT-004", "MNT-005", "MNT-008", "MNT-009"].map((assetCode) => {
+      const item = data.equipment.find((equipment) => equipment.assetCode === assetCode);
+      return [item.assetCode, item.name, item.manufacturer, item.model];
+    }),
+    [
+      ["MNT-003", "PEMOTech Tripod", "PEMOTech", null],
+      ["MNT-004", "Victiv Tripod", "Victiv", "NT70"],
+      ["MNT-005", "K&F Tripod", "K&F Concept", "K234A0"],
+      ["MNT-008", "Unbranded Three-Stage Tripod", "Unbranded", null],
+      ["MNT-009", "Unbranded Three-Stage Tripod", "Unbranded", null],
+    ],
+  );
   assert.match(data.equipment[0].primaryPhotoUrl, /assets\/equipment\/misty-ii\.png$/);
   assert.match(data.components[0].photoUrl, /assets\/equipment\/reachy-mini-wireless\.png$/);
 });
