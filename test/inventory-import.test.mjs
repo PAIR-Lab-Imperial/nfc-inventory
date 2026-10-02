@@ -20,8 +20,14 @@ test("canonical workbook validates and contains the expected seed records", asyn
   assert.equal(data.equipment.filter((item) => item.primaryPhotoUrl).length, 78);
   assert.equal(data.equipment.filter((item) => !item.primaryPhotoUrl.endsWith("equipment-placeholder.svg")).length, 40);
   assert.equal(data.components.filter((item) => item.photoUrl).length, 30);
-  assert.equal(data.equipment.filter((item) => item.name === "Reachy Mini Wireless").length, 3);
-  assert.equal(data.equipment.filter((item) => item.name === "Reachy Mini Lite").length, 2);
+  assert.equal(data.equipment.filter((item) => item.name === "Reachy Mini Wireless").length, 4);
+  assert.equal(data.equipment.filter((item) => item.name === "Reachy Mini Lite").length, 1);
+  const rob006 = data.equipment.find((item) => item.assetCode === "ROB-006");
+  assert.equal(rob006.model, "Reachy Mini Wireless");
+  assert.match(rob006.primaryPhotoUrl, /assets\/equipment\/reachy-mini-wireless\.png$/);
+  const rob006Robot = data.components.find((item) => item.assetCode === "ROB-006" && item.componentName === "Robot");
+  assert.equal(rob006Robot.model, "Reachy Mini Wireless");
+  assert.match(rob006Robot.photoUrl, /assets\/equipment\/reachy-mini-wireless\.png$/);
   assert.equal(data.equipment.filter((item) => item.model === "27MR400-B").length, 3);
   assert.equal(data.equipment.filter((item) => item.model === "C26M2020UK").length, 4);
   assert.equal(data.equipment.filter((item) => item.model === "MK270").length, 5);
