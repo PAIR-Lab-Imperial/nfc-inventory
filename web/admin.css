@@ -102,6 +102,8 @@
 .admin-status.status-proposed { color: var(--reserved); background: var(--reserved-bg); }
 .admin-status.status-ordered { color: var(--use); background: var(--use-bg); }
 .admin-status.status-received { color: var(--success); background: var(--success-bg); }
+.admin-status.status-written { color: var(--success); background: var(--success-bg); }
+.admin-status.status-not-written { color: var(--reserved); background: var(--reserved-bg); }
 .admin-status.status-maintenance,
 .admin-status.status-missing,
 .admin-status.status-retired { color: var(--danger); background: var(--danger-bg); }

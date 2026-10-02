@@ -232,7 +232,7 @@ function labelsView(data) {
       </div>
       <div class="admin-table-wrap">
         <table class="admin-table">
-          <thead><tr><th>Asset</th><th>Equipment</th><th>Label hint</th><th>Created</th><th></th></tr></thead>
+          <thead><tr><th>Asset</th><th>Equipment</th><th>Label hint</th><th>Created</th><th>Programming</th><th></th></tr></thead>
           <tbody>
             ${data.equipment.map((item) => {
               const label = activeLabels.get(item.assetCode);
@@ -242,8 +242,10 @@ function labelsView(data) {
                   <td><strong>${escapeHtml(item.name)}</strong></td>
                   <td>${label ? `…${escapeHtml(label.tokenHint)}` : "No active label"}</td>
                   <td>${label ? escapeHtml(formatDate(label.createdAt)) : "—"}</td>
+                  <td>${label ? `<span class="admin-status ${label.writtenAt ? "status-written" : "status-not-written"}">${label.writtenAt ? "Written" : "Not written"}</span>${label.writtenAt ? `<small>${escapeHtml(formatDateTime(label.writtenAt))}${label.writtenBy ? ` · ${escapeHtml(label.writtenBy)}` : ""}</small>` : ""}` : "—"}</td>
                   <td>
                     ${label?.scanUrl ? `<button class="secondary-button compact-button" type="button" data-view-label="${escapeHtml(item.assetCode)}">View URL</button>` : ""}
+                    ${label ? `<button class="secondary-button compact-button" type="button" data-set-label-written="${escapeHtml(label.id)}" data-written="${label.writtenAt ? "false" : "true"}">${label.writtenAt ? "Mark not written" : "Mark written"}</button>` : ""}
                     <button class="secondary-button compact-button" type="button" data-replace-label="${escapeHtml(item.assetCode)}">${label ? "Replace label" : "Create label"}</button>
                   </td>
                 </tr>
@@ -323,6 +325,7 @@ function renderDashboard(message = "") {
       ${summaryCard("Equipment", summary.equipmentCount)}
       ${summaryCard("Active members", summary.activeMemberCount)}
       ${summaryCard("Active NFC labels", summary.activeLabelCount)}
+      ${summaryCard("NFC written", `${summary.writtenLabelCount} / ${summary.activeLabelCount}`)}
       ${summaryCard("Open checkouts", summary.openCheckoutCount)}
       ${summaryCard("Reservations", summary.activeReservationCount)}
       ${summaryCard("Categories", summary.categoryCount)}
@@ -602,6 +605,27 @@ function openLabelDialog(assetCode) {
   dialog.showModal();
 }
 
+async function setLabelWritten(button) {
+  const label = currentData.labels.find((item) => item.id === button.dataset.setLabelWritten);
+  if (!label) return;
+  const written = button.dataset.written === "true";
+  button.disabled = true;
+  button.textContent = written ? "Marking…" : "Clearing…";
+  try {
+    await apiRequest(`/api/v1/admin/labels/${encodeURIComponent(label.id)}/written`, {
+      method: "PUT",
+      authenticated: true,
+      body: { written },
+    });
+    await loadDashboard(`${label.assetCode} was marked ${written ? "written" : "not written"}.`);
+    showView("labels");
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = written ? "Mark written" : "Mark not written";
+    window.alert(error instanceof Error ? error.message : "The NFC written status could not be saved.");
+  }
+}
+
 function openProposalDialog(proposal) {
   const dialog = document.querySelector("#admin-dialog");
   const optionChoices = proposal.options.map((option) => `<option value="${escapeHtml(option.id)}" ${proposal.selectedOptionId === option.id ? "selected" : ""}>${escapeHtml(option.name)}${option.quotedPrice !== null ? ` — ${escapeHtml(`${option.currency} ${Number(option.quotedPrice).toFixed(2)}`)}` : ""}</option>`).join("");
@@ -720,6 +744,7 @@ function bindDashboardEvents() {
   document.querySelector("#add-member").addEventListener("click", () => openMemberDialog());
   document.querySelectorAll("[data-edit-member]").forEach((button) => button.addEventListener("click", () => openMemberDialog(currentData.members.find((member) => member.username === button.dataset.editMember))));
   document.querySelectorAll("[data-view-label]").forEach((button) => button.addEventListener("click", () => showStoredLabelDialog(button.dataset.viewLabel)));
+  document.querySelectorAll("[data-set-label-written]").forEach((button) => button.addEventListener("click", () => setLabelWritten(button)));
   document.querySelectorAll("[data-replace-label]").forEach((button) => button.addEventListener("click", () => openLabelDialog(button.dataset.replaceLabel)));
   document.querySelectorAll("[data-edit-proposal]").forEach((button) => button.addEventListener("click", () => openProposalDialog(currentData.proposals.find((proposal) => proposal.id === button.dataset.editProposal))));
   document.querySelector("#export-inventory-workbook").addEventListener("click", (event) => exportInventoryWorkbook(event.currentTarget));

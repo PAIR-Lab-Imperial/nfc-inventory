@@ -166,6 +166,11 @@ returns a newly generated scan URL. The authenticated management dataset retains
 the full URL for viewing and protected exports; the token hash remains the value
 used by the public resolver.
 
+`PUT /api/v1/admin/labels/{label-id}/written` sets the active label's physical
+programming state. Send `{ "written": true }` after writing the sticker or
+`{ "written": false }` when it must be written again. The change records the
+administrator and timestamp and is included in the audit history.
+
 `PUT /api/v1/admin/proposals/{proposal-id}` records the proposal state, selected
 option, linked received equipment and administrator notes. Ordered and received
 proposals require a selected option; received proposals also require an equipment

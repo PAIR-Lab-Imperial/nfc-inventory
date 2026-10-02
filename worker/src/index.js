@@ -845,6 +845,7 @@ async function getAdminSummary(request, env, origin) {
       (SELECT COUNT(*) FROM categories WHERE active = 1) AS category_count,
       (SELECT COUNT(*) FROM members WHERE active = 1) AS active_member_count,
       (SELECT COUNT(*) FROM nfc_labels WHERE status = 'active') AS active_label_count,
+      (SELECT COUNT(*) FROM nfc_labels WHERE status = 'active' AND written_at IS NOT NULL) AS written_label_count,
       (SELECT COUNT(*) FROM checkouts WHERE returned_at IS NULL) AS open_checkout_count,
       (SELECT COUNT(*) FROM reservations WHERE status = 'active' AND (ends_at IS NULL OR ends_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))) AS active_reservation_count,
       (SELECT COUNT(*) FROM proposals WHERE status = 'proposed') AS proposed_count,
@@ -859,6 +860,7 @@ async function getAdminSummary(request, env, origin) {
         categoryCount: summary.category_count,
         activeMemberCount: summary.active_member_count,
         activeLabelCount: summary.active_label_count,
+        writtenLabelCount: summary.written_label_count,
         openCheckoutCount: summary.open_checkout_count,
         activeReservationCount: summary.active_reservation_count,
         proposals: {
@@ -1015,7 +1017,8 @@ async function getAdminData(request, env, origin) {
     `),
     env.DB.prepare(`
       SELECT label.id, e.asset_code, label.token_hint, label.scan_url,
-        label.status, label.notes, label.created_at, label.retired_at
+        label.status, label.notes, label.created_at, label.retired_at,
+        label.written_at, label.written_by
       FROM nfc_labels label
       JOIN equipment e ON e.id = label.equipment_id
       ORDER BY (label.status = 'active') DESC, e.asset_code COLLATE NOCASE, label.created_at DESC
@@ -1120,6 +1123,8 @@ async function getAdminData(request, env, origin) {
       notes: row.notes,
       createdAt: row.created_at,
       retiredAt: row.retired_at,
+      writtenAt: row.written_at,
+      writtenBy: row.written_by,
     })),
     proposals: mapProposalRows(proposalsResult.results, proposalOptionsResult.results, { includeAdmin: true }),
   }, {}, origin);
@@ -1396,6 +1401,49 @@ async function replaceAdminLabel(request, env, origin) {
   return json({
     label: { id: labelId, assetCode: equipment.asset_code, tokenHint, scanUrl, createdAt: now },
   }, { status: 201 }, origin);
+}
+
+async function setAdminLabelWritten(request, env, origin, labelId) {
+  requireWriteOrigin(request, origin);
+  const admin = await requireAdmin(request, env);
+  const body = await readJsonBody(request);
+  const written = optionalBoolean(body, "written", null);
+  if (written === null) throw new RequestError("invalid_body", "written must be true or false");
+  const label = await env.DB.prepare(`
+    SELECT label.id, label.status, label.written_at, label.written_by,
+      equipment.asset_code
+    FROM nfc_labels label
+    JOIN equipment ON equipment.id = label.equipment_id
+    WHERE label.id = ?1
+    LIMIT 1
+  `).bind(labelId).first();
+  if (!label) throw new RequestError("nfc_label_not_found", "NFC label not found", 404);
+  if (label.status !== "active") {
+    throw new RequestError("nfc_label_inactive", "Only the active NFC label can be marked as written", 409);
+  }
+  const now = new Date().toISOString();
+  const writtenAt = written ? now : null;
+  const writtenBy = written ? admin.username : null;
+  await env.DB.batch([
+    env.DB.prepare(`
+      UPDATE nfc_labels
+      SET written_at = ?1, written_by = ?2
+      WHERE id = ?3 AND status = 'active'
+    `).bind(writtenAt, writtenBy, label.id),
+    env.DB.prepare(`
+      INSERT INTO audit_events (
+        id, actor_type, actor_name, action, entity_type, entity_id,
+        before_json, after_json, created_at
+      ) VALUES (?1, 'admin', ?2, 'nfc_label.written_status_updated', 'nfc_label', ?3, ?4, ?5, ?6)
+    `).bind(
+      crypto.randomUUID(), admin.username, label.id,
+      JSON.stringify({ assetCode: label.asset_code, writtenAt: label.written_at, writtenBy: label.written_by }),
+      JSON.stringify({ assetCode: label.asset_code, writtenAt, writtenBy }), now,
+    ),
+  ]);
+  return json({
+    label: { id: label.id, assetCode: label.asset_code, written, writtenAt, writtenBy },
+  }, {}, origin);
 }
 
 async function saveAdminProposal(request, env, origin, proposalId) {
@@ -1749,7 +1797,7 @@ export default {
         {
           ok: true,
           service: "pair-lab-nfc-inventory-api",
-          version: "0.9.0",
+          version: "0.10.0",
         },
         {},
         allowedOrigin,
@@ -1834,6 +1882,16 @@ export default {
 
     if (request.method === "POST" && url.pathname === "/api/v1/admin/labels") {
       return await replaceAdminLabel(request, env, allowedOrigin);
+    }
+
+    const adminLabelWrittenMatch = /^\/api\/v1\/admin\/labels\/([^/]+)\/written$/.exec(url.pathname);
+    if (request.method === "PUT" && adminLabelWrittenMatch) {
+      return await setAdminLabelWritten(
+        request,
+        env,
+        allowedOrigin,
+        decodeRecordId(adminLabelWrittenMatch[1], "NFC label"),
+      );
     }
 
     const adminProposalMatch = /^\/api\/v1\/admin\/proposals\/([^/]+)$/.exec(url.pathname);

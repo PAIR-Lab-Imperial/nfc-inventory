@@ -55,6 +55,12 @@ replacement. Equipment and every bundle component can use a separate public phot
 URL. New records default to the maintained placeholder when no reviewed image is
 available.
 
+Each active NFC association also has a programming state. An administrator can
+mark the label **Written** after programming the physical sticker, or return it
+to **Not written** if the write needs to be repeated. The dashboard records when
+the state changed and which administrator marked it. A replacement association
+always starts as not written because it represents a new physical sticker.
+
 When a label is created or replaced, its full NFC scan URL is stored with the
 association and remains visible to authenticated administrators. The NFC labels
 module can display and copy the active URL again, and the protected operational

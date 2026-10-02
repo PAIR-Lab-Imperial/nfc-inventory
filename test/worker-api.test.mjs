@@ -85,6 +85,7 @@ function mutationEnvironment({ openCheckout = null, currentCheckout = null, nfcL
       category_count: 9,
       active_member_count: 6,
       active_label_count: 31,
+      written_label_count: 3,
       open_checkout_count: 0,
       active_reservation_count: 0,
       proposed_count: 0,
@@ -109,9 +110,10 @@ function mutationEnvironment({ openCheckout = null, currentCheckout = null, nfcL
       photo_url: "https://example.test/robot.jpg", display_order: 0,
     }],
     adminLabels: [{
-      id: "label-1", asset_code: "ROB-003", token_hint: "003-v1", status: "active",
+      id: "label-0001", asset_code: "ROB-003", token_hint: "003-v1", status: "active",
       scan_url: "https://pair-lab-imperial.github.io/nfc-inventory/?t=demo-rob-003-v1",
       notes: null, created_at: "2026-10-01T10:00:00.000Z", retired_at: null,
+      written_at: "2026-10-02T10:00:00.000Z", written_by: "test-admin",
     }],
     adminCategories: [{ name: "Robots", asset_code_prefix: "ROB", description: "Robot platforms" }],
     adminFiles: [{ asset_code: "ROB-003", kind: "manual", external_url: "https://example.test/manual.pdf", filename: "manual.pdf", description: "Manual" }],
@@ -474,6 +476,7 @@ test("administrator login issues a signed session that protects the summary", as
   assert.equal(summaryBody.admin.username, "test-admin");
   assert.equal(summaryBody.summary.equipmentCount, 31);
   assert.equal(summaryBody.summary.activeLabelCount, 31);
+  assert.equal(summaryBody.summary.writtenLabelCount, 3);
 });
 
 test("administrator routes reject invalid credentials and tampered sessions", async () => {
@@ -532,6 +535,8 @@ test("administrator data includes equipment photos, bundle photos, members and N
   assert.equal(body.members[0].username, "ranul");
   assert.equal(body.labels[0].tokenHint, "003-v1");
   assert.match(body.labels[0].scanUrl, /\?t=demo-rob-003-v1$/);
+  assert.equal(body.labels[0].writtenAt, "2026-10-02T10:00:00.000Z");
+  assert.equal(body.labels[0].writtenBy, "test-admin");
   assert.equal(body.equipment[0].files[0].kind, "manual");
   assert.equal(body.proposals[0].options[0].name, "Camera A");
 });
@@ -659,6 +664,38 @@ test("administrator generates and stores a recoverable replacement NFC URL", asy
   assert.match(writes[0].query, /status = 'replaced'/);
   assert.match(writes[1].parameters[2], /^[a-f0-9]{64}$/);
   assert.equal(writes[1].parameters.includes(body.label.scanUrl), true);
+});
+
+test("administrator records whether the active NFC label has been written", async () => {
+  const { environment, state } = mutationEnvironment({
+    nfcLabel: {
+      id: "label-0001",
+      asset_code: "ROB-003",
+      status: "active",
+      written_at: null,
+      written_by: null,
+    },
+  });
+  const token = await loginAdmin(environment);
+  const response = await worker.fetch(
+    new Request("https://api.example/api/v1/admin/labels/label-0001/written", {
+      method: "PUT",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        origin: "https://pair-lab-imperial.github.io",
+      },
+      body: JSON.stringify({ written: true }),
+    }),
+    environment,
+  );
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.label.written, true);
+  assert.equal(body.label.writtenBy, "test-admin");
+  const writes = state.writes.at(-1);
+  assert.match(writes[0].query, /SET written_at = \?1, written_by = \?2/);
+  assert.match(writes[1].query, /nfc_label\.written_status_updated/);
 });
 
 test("administrator availability override replaces conflicting member state and audits the change", async () => {
