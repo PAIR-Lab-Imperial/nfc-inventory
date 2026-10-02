@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" role="img" aria-labelledby="title description">
+  <title id="title">Equipment photo pending</title>
+  <desc id="description">A neutral placeholder for an equipment photograph that has not yet been added.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#e7f4f7"/>
+      <stop offset="1" stop-color="#eef3f8"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="800" rx="48" fill="url(#background)"/>
+  <g fill="none" stroke="#123b5d" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="370" y="180" width="460" height="330" rx="44" stroke-width="24"/>
+    <circle cx="508" cy="315" r="58" stroke-width="24"/>
+    <path d="m405 475 148-132 105 91 67-59 70 100" stroke-width="24"/>
+    <path d="M600 585v62M510 616h180" stroke-width="20"/>
+  </g>
+  <text x="600" y="710" fill="#123b5d" font-family="Arial, sans-serif" font-size="44" font-weight="700" text-anchor="middle">Equipment photo pending</text>
+</svg>

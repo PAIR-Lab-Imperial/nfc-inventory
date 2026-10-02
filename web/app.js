@@ -1,5 +1,11 @@
 const app = document.querySelector("#app");
 const apiBaseUrl = window.NFC_INVENTORY_CONFIG?.apiBaseUrl?.replace(/\/$/, "");
+const placeholderPhotoUrl = new URL("./assets/equipment-placeholder.svg", window.location.href).href;
+
+document.addEventListener("error", (event) => {
+  if (!(event.target instanceof HTMLImageElement) || !event.target.matches("[data-equipment-photo]")) return;
+  if (event.target.src !== placeholderPhotoUrl) event.target.src = placeholderPhotoUrl;
+}, true);
 
 const statusLabels = Object.freeze({
   free: "Available",
@@ -109,7 +115,7 @@ function equipmentCard(item) {
         <span class="asset-code">${escapeHtml(item.assetCode)}</span>
         ${statusBadge(item.availability)}
       </div>
-      <div class="category-mark" aria-hidden="true">${escapeHtml(item.assetCode.split("-")[0])}</div>
+      <img class="equipment-card-photo" data-equipment-photo src="${escapeHtml(item.photoUrl || placeholderPhotoUrl)}" alt="Photo of ${escapeHtml(item.name)}" loading="lazy">
       <div class="card-copy">
         <p class="category-label">${escapeHtml(item.category)}</p>
         <h2>${escapeHtml(item.name)}</h2>
@@ -294,6 +300,7 @@ function renderDetail(item, members, { message = "" } = {}) {
       <ul class="component-list">
         ${item.components.map((component) => `
           <li>
+            <img data-equipment-photo src="${escapeHtml(component.photoUrl || placeholderPhotoUrl)}" alt="Photo of ${escapeHtml(component.name)}" loading="lazy">
             <div><strong>${escapeHtml(component.name)}</strong>${component.quantity > 1 ? `<span>Quantity ${component.quantity}</span>` : ""}</div>
             <span class="return-flag">${component.requiredOnReturn ? "Return with bundle" : "Optional"}</span>
           </li>
@@ -343,6 +350,7 @@ function renderDetail(item, members, { message = "" } = {}) {
     <a class="back-link" href="./"><span aria-hidden="true">←</span> All equipment</a>
     ${message ? `<div class="action-confirmation" role="status">${escapeHtml(message)}</div>` : ""}
     <section class="detail-hero">
+      <div class="detail-photo-frame"><img data-equipment-photo src="${escapeHtml(item.photoUrl || placeholderPhotoUrl)}" alt="Photo of ${escapeHtml(item.name)}"></div>
       <div class="detail-title">
         <div class="card-topline">
           <span class="asset-code">${escapeHtml(item.assetCode)}</span>

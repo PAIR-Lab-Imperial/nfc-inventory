@@ -37,7 +37,8 @@ docs/                   Architecture and deployment documentation
 - [x] NFC token resolution and temporary dummy-label manifest
 - [x] Member reservations and equipment checkout/return
 - [x] Password-protected administrator authentication and overview dashboard
-- [ ] Administrator equipment, member and label-management modules
+- [x] Administrator equipment, bundle, member and NFC-label management
+- [x] Public equipment and bundle-component photos with maintained placeholders
 - [ ] Proposal workflow, exports and automated backups
 - [ ] NFC label generation and rollout
 

@@ -5,14 +5,15 @@ The authoritative schema is the ordered SQL under `worker/migrations/`.
 ## Core records
 
 - `categories`: equipment categories and immutable asset-code prefixes.
-- `equipment`: one row per reservable unit or complete bundle.
-- `bundle_components`: descriptive constituents of a bundle; components are not
-  independently reservable.
+- `equipment`: one row per reservable unit or complete bundle, including its
+  primary public photograph URL.
+- `bundle_components`: descriptive constituents of a bundle with an individual
+  photograph URL; components are not independently reservable.
 - `members`: active and historical lab member names. Deactivation preserves history.
 - `nfc_labels`: replaceable NFC associations and label-loss history.
 - `reservations`: advisory date ranges, sharing preference and flexibility notes.
 - `checkouts`: actual possession history and the current holder.
-- `equipment_files`: photographs and supporting public/admin documents.
+- `equipment_files`: additional photographs and supporting public/admin documents.
 - `proposals` and `proposal_options`: proposed, ordered and received purchasing work.
 - `audit_events`: append-only record of important mutations.
 - `backup_runs`: operational evidence for scheduled backups.

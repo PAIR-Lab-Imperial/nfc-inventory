@@ -8,7 +8,7 @@ if (!baseUrl) {
 const checks = [
   {
     path: "/health",
-    validate: (body) => body.ok === true && body.version === "0.5.0",
+    validate: (body) => body.ok === true && body.version === "0.6.0",
     summarize: (body) => ({ ok: body.ok, version: body.version }),
   },
   {
@@ -34,13 +34,13 @@ const checks = [
   },
   {
     path: "/api/v1/equipment",
-    validate: (body) => body.count === 31 && body.items?.length === 31,
-    summarize: (body) => ({ count: body.count, categories: body.categories?.length }),
+    validate: (body) => body.count === 31 && body.items?.length === 31 && body.items.every((item) => item.photoUrl),
+    summarize: (body) => ({ count: body.count, categories: body.categories?.length, photos: body.items?.filter((item) => item.photoUrl).length }),
   },
   {
     path: "/api/v1/equipment/ROB-003",
-    validate: (body) => body.item?.assetCode === "ROB-003" && body.item.components?.length === 3,
-    summarize: (body) => ({ assetCode: body.item?.assetCode, components: body.item?.components?.length }),
+    validate: (body) => body.item?.assetCode === "ROB-003" && body.item.photoUrl && body.item.components?.length === 3 && body.item.components.every((item) => item.photoUrl),
+    summarize: (body) => ({ assetCode: body.item?.assetCode, components: body.item?.components?.length, componentPhotos: body.item?.components?.filter((item) => item.photoUrl).length }),
   },
 ];
 

@@ -15,6 +15,7 @@
     }
   ],
   "vars": {
-    "ALLOWED_ORIGIN": "https://pair-lab-imperial.github.io"
+    "ALLOWED_ORIGIN": "https://pair-lab-imperial.github.io",
+    "PUBLIC_APP_URL": "https://pair-lab-imperial.github.io/nfc-inventory/"
   }
 }

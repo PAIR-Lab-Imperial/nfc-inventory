@@ -22,9 +22,9 @@ list. This covers the expected 50–100 item lab inventory without pagination.
 
 `GET /api/v1/equipment/{asset-code}`
 
-The response includes public equipment metadata, current availability, the
-current user when applicable, bundle contents, and current or upcoming active
-reservations. It deliberately excludes administrator notes, purchase price,
+The response includes public equipment metadata, the primary photo, current
+availability, the current user when applicable, photographed bundle contents,
+and current or upcoming active reservations. It deliberately excludes administrator notes, purchase price,
 supplier information, serial numbers, receipts, certificates and controlled
 file records.
 
@@ -126,3 +126,18 @@ Authorization: Bearer <session-token>
 `GET /api/v1/admin/summary` returns administrator identity and record counts for
 equipment, categories, active members, labels, checkouts, reservations and
 proposal states. It does not expose the configured password or token-signing key.
+
+`GET /api/v1/admin/data` returns the authenticated management dataset for
+equipment, bundle components, members, categories and NFC label history.
+
+`POST /api/v1/admin/equipment` creates an equipment record. `PUT
+/api/v1/admin/equipment/{asset-code}` updates the record and replaces its bundle
+component list as one D1 batch. Asset codes remain immutable.
+
+`POST /api/v1/admin/members` creates a member. `PUT
+/api/v1/admin/members/{username}` updates the display name, active state and
+notes while preserving the username and history.
+
+`POST /api/v1/admin/labels` retires any active association for an asset and
+returns a newly generated scan URL once. Only the new token hash and short hint
+are stored.

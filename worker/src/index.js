@@ -16,6 +16,9 @@ const AVAILABILITY_VALUES = new Set([
 const ADMIN_SESSION_SECONDS = 4 * 60 * 60;
 const LOGIN_WINDOW_SECONDS = 15 * 60;
 const LOGIN_MAX_FAILURES = 5;
+const ITEM_TYPES = new Set(["individual", "bundle"]);
+const CONDITIONS = new Set(["good", "fair", "damaged", "unknown"]);
+const LIFECYCLE_STATUSES = new Set(["active", "maintenance", "missing", "retired"]);
 
 class RequestError extends Error {
   constructor(code, message, status = 400) {
@@ -28,7 +31,7 @@ class RequestError extends Error {
 function withCors(headers, origin) {
   const result = new Headers(headers);
   result.set("access-control-allow-origin", origin);
-  result.set("access-control-allow-methods", "GET, POST, PATCH, OPTIONS");
+  result.set("access-control-allow-methods", "GET, POST, PUT, PATCH, OPTIONS");
   result.set("access-control-allow-headers", "content-type, authorization");
   result.set("vary", "Origin");
   return result;
@@ -84,6 +87,56 @@ function timestamp(body, field, { required = false } = {}) {
   const date = new Date(value);
   if (Number.isNaN(date.valueOf())) throw new RequestError("invalid_body", `${field} must be an ISO-8601 timestamp`);
   return date.toISOString();
+}
+
+function optionalUrl(body, field) {
+  const value = optionalText(body, field, 2000);
+  if (!value) return null;
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new RequestError("invalid_body", `${field} must be a valid HTTP or HTTPS URL`);
+  }
+  if (!["http:", "https:"].includes(parsed.protocol)) {
+    throw new RequestError("invalid_body", `${field} must be a valid HTTP or HTTPS URL`);
+  }
+  return parsed.href;
+}
+
+function optionalCalendarDate(body, field) {
+  const value = optionalText(body, field, 10);
+  if (!value) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) throw new RequestError("invalid_body", `${field} must use YYYY-MM-DD`);
+  const date = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(date.valueOf()) || date.toISOString().slice(0, 10) !== value) {
+    throw new RequestError("invalid_body", `${field} must be a real calendar date`);
+  }
+  return value;
+}
+
+function enumText(body, field, allowed, { optional = false } = {}) {
+  const value = optional ? optionalText(body, field, 50) : requiredText(body, field, 50);
+  if (!value) return null;
+  const normalized = value.toLocaleLowerCase("en-GB");
+  if (!allowed.has(normalized)) throw new RequestError("invalid_body", `${field} is not supported`);
+  return normalized;
+}
+
+function optionalBoolean(body, field, defaultValue) {
+  if (body[field] === undefined) return defaultValue;
+  if (typeof body[field] !== "boolean") throw new RequestError("invalid_body", `${field} must be true or false`);
+  return body[field];
+}
+
+function purchasePriceMinor(body) {
+  if (body.purchasePrice === null || body.purchasePrice === undefined || body.purchasePrice === "") return null;
+  const value = Number(body.purchasePrice);
+  if (!Number.isFinite(value) || value < 0 || Math.abs(value * 100 - Math.round(value * 100)) > 1e-7) {
+    throw new RequestError("invalid_body", "purchasePrice must be a non-negative amount with at most two decimal places");
+  }
+  return Math.round(value * 100);
 }
 
 function requireWriteOrigin(request, allowedOrigin) {
@@ -228,6 +281,7 @@ function mapEquipmentSummary(row) {
     currentUser: row.current_user,
     reservedUntil: row.reserved_until,
     canShare: nullableBoolean(row.can_share),
+    photoUrl: row.photo_url,
   };
 }
 
@@ -289,6 +343,7 @@ async function listEquipment(env, url, origin) {
       e.location,
       e.condition,
       e.lifecycle_status,
+      e.primary_photo_url AS photo_url,
       state.availability,
       CASE state.availability
         WHEN 'in_use' THEN (
@@ -393,6 +448,7 @@ async function getEquipment(env, assetCode, origin) {
       e.lifecycle_status,
       e.purchase_date,
       e.public_notes,
+      e.primary_photo_url AS photo_url,
       state.availability,
       CASE state.availability
         WHEN 'in_use' THEN (
@@ -455,7 +511,8 @@ async function getEquipment(env, assetCode, origin) {
       component.model,
       component.quantity,
       component.required_on_return,
-      component.notes
+      component.notes,
+      component.photo_url
     FROM bundle_components component
     JOIN equipment e ON e.id = component.equipment_id
     WHERE e.asset_code = ?1 COLLATE NOCASE
@@ -499,6 +556,7 @@ async function getEquipment(env, assetCode, origin) {
           quantity: component.quantity,
           requiredOnReturn: component.required_on_return === 1,
           notes: component.notes,
+          photoUrl: component.photo_url,
         })),
         reservations: reservationsResult.results.map((reservation) => ({
           id: reservation.id,
@@ -654,6 +712,351 @@ async function getAdminSummary(request, env, origin) {
     {},
     origin,
   );
+}
+
+function adminEquipmentInput(body) {
+  const itemType = enumText(body, "itemType", ITEM_TYPES);
+  const priceMinor = purchasePriceMinor(body);
+  const currency = optionalText(body, "currency", 3)?.toUpperCase() || null;
+  if (currency && !/^[A-Z]{3}$/.test(currency)) throw new RequestError("invalid_body", "currency must be a three-letter code");
+  if (priceMinor !== null && !currency) throw new RequestError("invalid_body", "currency is required when purchasePrice is provided");
+  if (body.components !== undefined && !Array.isArray(body.components)) {
+    throw new RequestError("invalid_body", "components must be an array");
+  }
+  const componentNames = new Set();
+  const components = (body.components || []).map((component, index) => {
+    if (!component || typeof component !== "object" || Array.isArray(component)) {
+      throw new RequestError("invalid_body", `components[${index}] must be an object`);
+    }
+    const name = requiredText(component, "name", 150);
+    const key = name.toLocaleLowerCase("en-GB");
+    if (componentNames.has(key)) throw new RequestError("invalid_body", `Duplicate component name: ${name}`);
+    componentNames.add(key);
+    const quantity = Number(component.quantity ?? 1);
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 1000) {
+      throw new RequestError("invalid_body", `components[${index}].quantity must be a whole number from 1 to 1000`);
+    }
+    return {
+      id: crypto.randomUUID(),
+      name,
+      manufacturer: optionalText(component, "manufacturer", 150),
+      model: optionalText(component, "model", 150),
+      serialNumber: optionalText(component, "serialNumber", 200),
+      quantity,
+      requiredOnReturn: optionalBoolean(component, "requiredOnReturn", true),
+      notes: optionalText(component, "notes", 500),
+      photoUrl: optionalUrl(component, "photoUrl"),
+      displayOrder: index,
+    };
+  });
+  if (itemType === "individual" && components.length) {
+    throw new RequestError("invalid_body", "Individual equipment cannot have bundle components");
+  }
+  return {
+    name: requiredText(body, "name", 150),
+    category: requiredText(body, "category", 150),
+    itemType,
+    manufacturer: optionalText(body, "manufacturer", 150),
+    model: optionalText(body, "model", 150),
+    serialNumber: optionalText(body, "serialNumber", 200),
+    publicSpecifications: optionalText(body, "publicSpecifications", 2000),
+    location: optionalText(body, "location", 200),
+    condition: enumText(body, "condition", CONDITIONS, { optional: true }),
+    lifecycleStatus: enumText(body, "lifecycleStatus", LIFECYCLE_STATUSES),
+    purchaseDate: optionalCalendarDate(body, "purchaseDate"),
+    purchasePriceMinor: priceMinor,
+    currency,
+    supplier: optionalText(body, "supplier", 200),
+    publicNotes: optionalText(body, "publicNotes", 1000),
+    adminNotes: optionalText(body, "adminNotes", 2000),
+    photoUrl: optionalUrl(body, "photoUrl"),
+    components,
+  };
+}
+
+async function getAdminData(request, env, origin) {
+  const admin = await requireAdmin(request, env);
+  const [equipmentResult, componentsResult, membersResult, labelsResult, categoriesResult] = await env.DB.batch([
+    env.DB.prepare(`
+      SELECT
+        e.asset_code, e.name, cat.name AS category, e.item_type, e.manufacturer,
+        e.model, e.serial_number, e.public_specifications, e.location, e.condition,
+        e.lifecycle_status, e.purchase_date, e.purchase_price_minor, e.currency,
+        e.supplier, e.public_notes, e.admin_notes, e.primary_photo_url,
+        state.availability
+      FROM equipment e
+      JOIN categories cat ON cat.id = e.category_id
+      JOIN equipment_current_state state ON state.equipment_id = e.id
+      ORDER BY e.asset_code COLLATE NOCASE
+      LIMIT 200
+    `),
+    env.DB.prepare(`
+      SELECT e.asset_code, component.component_name, component.manufacturer,
+        component.model, component.serial_number, component.quantity,
+        component.required_on_return, component.notes, component.photo_url,
+        component.display_order
+      FROM bundle_components component
+      JOIN equipment e ON e.id = component.equipment_id
+      ORDER BY e.asset_code COLLATE NOCASE, component.display_order, component.component_name COLLATE NOCASE
+    `),
+    env.DB.prepare(`
+      SELECT username, display_name, active, notes
+      FROM members
+      ORDER BY active DESC, display_name COLLATE NOCASE
+    `),
+    env.DB.prepare(`
+      SELECT label.id, e.asset_code, label.token_hint, label.status, label.notes,
+        label.created_at, label.retired_at
+      FROM nfc_labels label
+      JOIN equipment e ON e.id = label.equipment_id
+      ORDER BY (label.status = 'active') DESC, e.asset_code COLLATE NOCASE, label.created_at DESC
+      LIMIT 500
+    `),
+    env.DB.prepare(`
+      SELECT name, asset_code_prefix
+      FROM categories
+      WHERE active = 1
+      ORDER BY name COLLATE NOCASE
+    `),
+  ]);
+  const componentsByAsset = new Map();
+  for (const component of componentsResult.results) {
+    const collection = componentsByAsset.get(component.asset_code) || [];
+    collection.push({
+      name: component.component_name,
+      manufacturer: component.manufacturer,
+      model: component.model,
+      serialNumber: component.serial_number,
+      quantity: component.quantity,
+      requiredOnReturn: component.required_on_return === 1,
+      notes: component.notes,
+      photoUrl: component.photo_url,
+    });
+    componentsByAsset.set(component.asset_code, collection);
+  }
+  return json({
+    admin,
+    categories: categoriesResult.results.map((row) => ({ name: row.name, assetCodePrefix: row.asset_code_prefix })),
+    equipment: equipmentResult.results.map((row) => ({
+      assetCode: row.asset_code,
+      name: row.name,
+      category: row.category,
+      itemType: row.item_type,
+      manufacturer: row.manufacturer,
+      model: row.model,
+      serialNumber: row.serial_number,
+      publicSpecifications: row.public_specifications,
+      location: row.location,
+      condition: row.condition,
+      lifecycleStatus: row.lifecycle_status,
+      purchaseDate: row.purchase_date,
+      purchasePrice: row.purchase_price_minor === null ? null : row.purchase_price_minor / 100,
+      currency: row.currency,
+      supplier: row.supplier,
+      publicNotes: row.public_notes,
+      adminNotes: row.admin_notes,
+      photoUrl: row.primary_photo_url,
+      availability: row.availability,
+      components: componentsByAsset.get(row.asset_code) || [],
+    })),
+    members: membersResult.results.map((row) => ({
+      username: row.username,
+      displayName: row.display_name,
+      active: row.active === 1,
+      notes: row.notes,
+    })),
+    labels: labelsResult.results.map((row) => ({
+      id: row.id,
+      assetCode: row.asset_code,
+      tokenHint: row.token_hint,
+      status: row.status,
+      notes: row.notes,
+      createdAt: row.created_at,
+      retiredAt: row.retired_at,
+    })),
+  }, {}, origin);
+}
+
+async function saveAdminEquipment(request, env, origin, routeAssetCode = null) {
+  requireWriteOrigin(request, origin);
+  const admin = await requireAdmin(request, env);
+  const body = await readJsonBody(request);
+  const creating = routeAssetCode === null;
+  const assetCode = creating ? decodeAssetCode(requiredText(body, "assetCode", 20)) : routeAssetCode;
+  const data = adminEquipmentInput(body);
+  const publicAppUrl = env.PUBLIC_APP_URL || `${origin}/nfc-inventory/`;
+  const placeholderPhotoUrl = new URL("assets/equipment-placeholder.svg", publicAppUrl).href;
+  data.photoUrl ||= placeholderPhotoUrl;
+  for (const component of data.components) component.photoUrl ||= placeholderPhotoUrl;
+  const category = await env.DB.prepare(`
+    SELECT id, asset_code_prefix
+    FROM categories
+    WHERE name = ?1 COLLATE NOCASE AND active = 1
+    LIMIT 1
+  `).bind(data.category).first();
+  if (!category) throw new RequestError("category_not_found", "Active category not found", 404);
+  if (!assetCode.toUpperCase().startsWith(`${category.asset_code_prefix.toUpperCase()}-`)) {
+    throw new RequestError("invalid_asset_code", `Asset code must use the ${category.asset_code_prefix} category prefix`);
+  }
+  const existing = await env.DB.prepare(`
+    SELECT id, asset_code, name
+    FROM equipment
+    WHERE asset_code = ?1 COLLATE NOCASE
+    LIMIT 1
+  `).bind(assetCode).first();
+  if (creating && existing) throw new RequestError("asset_code_exists", "That asset code already exists", 409);
+  if (!creating && !existing) throw new RequestError("equipment_not_found", "Equipment not found", 404);
+  const equipmentId = existing?.id || crypto.randomUUID();
+  const now = new Date().toISOString();
+  const statements = [];
+  if (creating) {
+    statements.push(env.DB.prepare(`
+      INSERT INTO equipment (
+        id, asset_code, name, category_id, item_type, manufacturer, model,
+        serial_number, public_specifications, location, condition, lifecycle_status,
+        purchase_date, purchase_price_minor, currency, supplier, public_notes,
+        admin_notes, primary_photo_url, created_at, updated_at
+      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?20)
+    `).bind(
+      equipmentId, assetCode.toUpperCase(), data.name, category.id, data.itemType,
+      data.manufacturer, data.model, data.serialNumber, data.publicSpecifications,
+      data.location, data.condition, data.lifecycleStatus, data.purchaseDate,
+      data.purchasePriceMinor, data.currency, data.supplier, data.publicNotes,
+      data.adminNotes, data.photoUrl, now,
+    ));
+  } else {
+    statements.push(env.DB.prepare(`
+      UPDATE equipment SET
+        name = ?1, category_id = ?2, item_type = ?3, manufacturer = ?4,
+        model = ?5, serial_number = ?6, public_specifications = ?7,
+        location = ?8, condition = ?9, lifecycle_status = ?10,
+        purchase_date = ?11, purchase_price_minor = ?12, currency = ?13,
+        supplier = ?14, public_notes = ?15, admin_notes = ?16,
+        primary_photo_url = ?17, record_version = record_version + 1,
+        updated_at = ?18
+      WHERE id = ?19
+    `).bind(
+      data.name, category.id, data.itemType, data.manufacturer, data.model,
+      data.serialNumber, data.publicSpecifications, data.location, data.condition,
+      data.lifecycleStatus, data.purchaseDate, data.purchasePriceMinor, data.currency,
+      data.supplier, data.publicNotes, data.adminNotes, data.photoUrl, now, equipmentId,
+    ));
+    statements.push(env.DB.prepare("DELETE FROM bundle_components WHERE equipment_id = ?1").bind(equipmentId));
+  }
+  for (const component of data.components) {
+    statements.push(env.DB.prepare(`
+      INSERT INTO bundle_components (
+        id, equipment_id, component_name, manufacturer, model, serial_number,
+        quantity, required_on_return, notes, photo_url, display_order, created_at, updated_at
+      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?12)
+    `).bind(
+      component.id, equipmentId, component.name, component.manufacturer, component.model,
+      component.serialNumber, component.quantity, component.requiredOnReturn ? 1 : 0,
+      component.notes, component.photoUrl, component.displayOrder, now,
+    ));
+  }
+  statements.push(env.DB.prepare(`
+    INSERT INTO audit_events (
+      id, actor_type, actor_name, action, entity_type, entity_id,
+      before_json, after_json, created_at
+    ) VALUES (?1, 'admin', ?2, ?3, 'equipment', ?4, ?5, ?6, ?7)
+  `).bind(
+    crypto.randomUUID(), admin.username, creating ? "equipment.created" : "equipment.updated",
+    equipmentId, existing ? JSON.stringify({ assetCode: existing.asset_code, name: existing.name }) : null,
+    JSON.stringify({ assetCode: assetCode.toUpperCase(), ...data, purchasePriceMinor: data.purchasePriceMinor }), now,
+  ));
+  await env.DB.batch(statements);
+  return json({ equipment: { assetCode: assetCode.toUpperCase(), name: data.name }, created: creating }, { status: creating ? 201 : 200 }, origin);
+}
+
+function validUsername(value) {
+  let username;
+  try {
+    username = decodeURIComponent(value);
+  } catch {
+    throw new RequestError("invalid_username", "Invalid member username");
+  }
+  if (!/^[A-Za-z0-9._-]{1,80}$/.test(username)) throw new RequestError("invalid_username", "Invalid member username");
+  return username;
+}
+
+async function saveAdminMember(request, env, origin, routeUsername = null) {
+  requireWriteOrigin(request, origin);
+  const admin = await requireAdmin(request, env);
+  const body = await readJsonBody(request);
+  const creating = routeUsername === null;
+  const username = creating ? validUsername(requiredText(body, "username", 80)) : routeUsername;
+  const displayName = requiredText(body, "displayName", 150);
+  const active = optionalBoolean(body, "active", true);
+  const notes = optionalText(body, "notes", 1000);
+  const existing = await env.DB.prepare(`
+    SELECT id, display_name, active, notes FROM members WHERE username = ?1 COLLATE NOCASE LIMIT 1
+  `).bind(username).first();
+  if (creating && existing) throw new RequestError("username_exists", "That username already exists", 409);
+  if (!creating && !existing) throw new RequestError("member_not_found", "Member not found", 404);
+  const memberId = existing?.id || crypto.randomUUID();
+  const now = new Date().toISOString();
+  const memberStatement = creating
+    ? env.DB.prepare(`
+        INSERT INTO members (id, username, display_name, active, notes, created_at, updated_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
+      `).bind(memberId, username, displayName, active ? 1 : 0, notes, now)
+    : env.DB.prepare(`
+        UPDATE members SET display_name = ?1, active = ?2, notes = ?3, updated_at = ?4 WHERE id = ?5
+      `).bind(displayName, active ? 1 : 0, notes, now, memberId);
+  await env.DB.batch([
+    memberStatement,
+    env.DB.prepare(`
+      INSERT INTO audit_events (
+        id, actor_type, actor_name, action, entity_type, entity_id,
+        before_json, after_json, created_at
+      ) VALUES (?1, 'admin', ?2, ?3, 'member', ?4, ?5, ?6, ?7)
+    `).bind(
+      crypto.randomUUID(), admin.username, creating ? "member.created" : "member.updated",
+      memberId, existing ? JSON.stringify(existing) : null,
+      JSON.stringify({ username, displayName, active, notes }), now,
+    ),
+  ]);
+  return json({ member: { username, displayName, active }, created: creating }, { status: creating ? 201 : 200 }, origin);
+}
+
+async function replaceAdminLabel(request, env, origin) {
+  requireWriteOrigin(request, origin);
+  const admin = await requireAdmin(request, env);
+  const body = await readJsonBody(request);
+  const assetCode = decodeAssetCode(requiredText(body, "assetCode", 20));
+  const notes = optionalText(body, "notes", 500);
+  const equipment = await env.DB.prepare(`
+    SELECT id, asset_code FROM equipment WHERE asset_code = ?1 COLLATE NOCASE LIMIT 1
+  `).bind(assetCode).first();
+  if (!equipment) throw new RequestError("equipment_not_found", "Equipment not found", 404);
+  const tokenBytes = new Uint8Array(24);
+  crypto.getRandomValues(tokenBytes);
+  const token = bytesToBase64Url(tokenBytes);
+  const tokenHash = await sha256Hex(token);
+  const tokenHint = token.slice(-6);
+  const labelId = crypto.randomUUID();
+  const now = new Date().toISOString();
+  await env.DB.batch([
+    env.DB.prepare(`
+      UPDATE nfc_labels SET status = 'replaced', retired_at = ?1
+      WHERE equipment_id = ?2 AND status = 'active'
+    `).bind(now, equipment.id),
+    env.DB.prepare(`
+      INSERT INTO nfc_labels (id, equipment_id, token_hash, token_hint, status, notes, created_at)
+      VALUES (?1, ?2, ?3, ?4, 'active', ?5, ?6)
+    `).bind(labelId, equipment.id, tokenHash, tokenHint, notes, now),
+    env.DB.prepare(`
+      INSERT INTO audit_events (
+        id, actor_type, actor_name, action, entity_type, entity_id, after_json, created_at
+      ) VALUES (?1, 'admin', ?2, 'nfc_label.replaced', 'nfc_label', ?3, ?4, ?5)
+    `).bind(crypto.randomUUID(), admin.username, labelId, JSON.stringify({ assetCode: equipment.asset_code, tokenHint }), now),
+  ]);
+  const publicAppUrl = env.PUBLIC_APP_URL || `${origin}/nfc-inventory/`;
+  const scanUrl = new URL(`?t=${encodeURIComponent(token)}`, publicAppUrl).href;
+  return json({
+    label: { id: labelId, assetCode: equipment.asset_code, tokenHint, scanUrl, createdAt: now },
+  }, { status: 201 }, origin);
 }
 
 async function findEquipmentAndMember(env, assetCode, username) {
@@ -856,7 +1259,7 @@ export default {
         {
           ok: true,
           service: "pair-lab-nfc-inventory-api",
-          version: "0.5.0",
+          version: "0.6.0",
         },
         {},
         allowedOrigin,
@@ -893,6 +1296,32 @@ export default {
 
     if (request.method === "GET" && url.pathname === "/api/v1/admin/summary") {
       return await getAdminSummary(request, env, allowedOrigin);
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/v1/admin/data") {
+      return await getAdminData(request, env, allowedOrigin);
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/v1/admin/equipment") {
+      return await saveAdminEquipment(request, env, allowedOrigin);
+    }
+
+    const adminEquipmentMatch = /^\/api\/v1\/admin\/equipment\/([^/]+)$/.exec(url.pathname);
+    if (request.method === "PUT" && adminEquipmentMatch) {
+      return await saveAdminEquipment(request, env, allowedOrigin, decodeAssetCode(adminEquipmentMatch[1]));
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/v1/admin/members") {
+      return await saveAdminMember(request, env, allowedOrigin);
+    }
+
+    const adminMemberMatch = /^\/api\/v1\/admin\/members\/([^/]+)$/.exec(url.pathname);
+    if (request.method === "PUT" && adminMemberMatch) {
+      return await saveAdminMember(request, env, allowedOrigin, validUsername(adminMemberMatch[1]));
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/v1/admin/labels") {
+      return await replaceAdminLabel(request, env, allowedOrigin);
     }
 
     const nfcMatch = /^\/api\/v1\/nfc\/([^/]+)$/.exec(url.pathname);

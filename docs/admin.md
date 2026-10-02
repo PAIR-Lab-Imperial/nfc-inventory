@@ -49,6 +49,13 @@ To change local credentials, edit the ignored `worker/.dev.vars` file and restar
   minutes.
 - Login responses never reveal whether the username or password was wrong.
 
-The first dashboard release is an authenticated overview. Equipment editing,
-member maintenance, NFC replacement, import/export and backup controls will be
-implemented as separate protected modules.
+The dashboard provides protected modules for equipment and bundle editing,
+member maintenance, and NFC label creation or replacement. Equipment and every
+bundle component can use a separate public photo URL. New records default to the
+maintained placeholder when no reviewed image is available.
+
+When a label is created or replaced, its full NFC scan URL is displayed once.
+Write or copy that URL before closing the result. D1 stores only the token hash
+and a short hint, so the full URL cannot be recovered later.
+
+Import/export, proposal and backup controls remain later modules.

@@ -19,6 +19,7 @@ const summaryRow = {
   public_specifications: "Wireless robot platform",
   purchase_date: "2026-09-01",
   public_notes: "Return as a complete bundle",
+  photo_url: "https://example.test/reachy.jpg",
 };
 
 class FakeStatement {
@@ -57,6 +58,9 @@ class MutationStatement extends FakeStatement {
       return this.state.currentCheckout;
     }
     if (this.query.includes("FROM checkouts")) return this.state.openCheckout;
+    if (this.query.includes("FROM categories")) return this.state.categoryRecord;
+    if (this.query.includes("FROM equipment")) return this.state.equipmentRecord;
+    if (this.query.includes("FROM members WHERE username")) return this.state.memberRecord;
     return null;
   }
 
@@ -86,6 +90,27 @@ function mutationEnvironment({ openCheckout = null, currentCheckout = null, nfcL
       received_count: 0,
     },
     members: [{ id: "member-1", username: "ranul", display_name: "Ranul" }],
+    categoryRecord: { id: "category-1", asset_code_prefix: "ROB" },
+    equipmentRecord: { id: "equipment-1", asset_code: "ROB-003", name: "Reachy Mini Wireless" },
+    memberRecord: { id: "member-1", display_name: "Ranul", active: 1, notes: null },
+    adminEquipment: [{
+      asset_code: "ROB-003", name: "Reachy Mini Wireless", category: "Robots", item_type: "bundle",
+      manufacturer: "Pollen Robotics", model: "Mini", serial_number: "R-001",
+      public_specifications: "Wireless robot platform", location: "PAIR Lab", condition: "good",
+      lifecycle_status: "active", purchase_date: "2026-09-01", purchase_price_minor: 100000,
+      currency: "GBP", supplier: "Supplier", public_notes: null, admin_notes: "Pilot",
+      primary_photo_url: "https://example.test/reachy.jpg", availability: "free",
+    }],
+    adminComponents: [{
+      asset_code: "ROB-003", component_name: "Robot", manufacturer: "Pollen Robotics", model: "Mini",
+      serial_number: "R-001", quantity: 1, required_on_return: 1, notes: null,
+      photo_url: "https://example.test/robot.jpg", display_order: 0,
+    }],
+    adminLabels: [{
+      id: "label-1", asset_code: "ROB-003", token_hint: "003-v1", status: "active",
+      notes: null, created_at: "2026-10-01T10:00:00.000Z", retired_at: null,
+    }],
+    adminCategories: [{ name: "Robots", asset_code_prefix: "ROB" }],
     writes: [],
   };
   const environment = {
@@ -97,6 +122,15 @@ function mutationEnvironment({ openCheckout = null, currentCheckout = null, nfcL
         return new MutationStatement(query, state);
       },
       async batch(statements) {
+        if (statements.length === 5 && statements[0]?.query.includes("primary_photo_url")) {
+          return [
+            { results: state.adminEquipment },
+            { results: state.adminComponents },
+            { results: state.members.map((member) => ({ ...member, active: 1, notes: null })) },
+            { results: state.adminLabels },
+            { results: state.adminCategories },
+          ];
+        }
         if (statements[0]?.query.includes("SELECT id, asset_code, name, lifecycle_status")) {
           return [
             { results: [{ id: "equipment-1", asset_code: "ROB-003", name: "Reachy Mini Wireless", lifecycle_status: "active" }] },
@@ -119,6 +153,15 @@ function postRequest(path, body, origin = "https://pair-lab-imperial.github.io")
   });
 }
 
+async function loginAdmin(environment) {
+  const response = await worker.fetch(
+    postRequest("/api/v1/admin/login", { username: "test-admin", password: "test-password-long-enough" }),
+    environment,
+  );
+  assert.equal(response.status, 200);
+  return (await response.json()).session.token;
+}
+
 function fakeEnvironment({ found = true } = {}) {
   return {
     ALLOWED_ORIGIN: "https://pair-lab-imperial.github.io",
@@ -137,7 +180,7 @@ function fakeEnvironment({ found = true } = {}) {
           { results: found ? [summaryRow] : [] },
           {
             results: found
-              ? [{ component_name: "Robot", manufacturer: null, model: null, quantity: 1, required_on_return: 1, notes: null }]
+              ? [{ component_name: "Robot", manufacturer: null, model: null, quantity: 1, required_on_return: 1, notes: null, photo_url: "https://example.test/robot.jpg" }]
               : [],
           },
           {
@@ -175,6 +218,7 @@ test("catalogue route returns public equipment summaries and categories", async 
     currentUser: "Ranul",
     reservedUntil: "2026-10-05T12:00:00.000Z",
     canShare: true,
+    photoUrl: "https://example.test/reachy.jpg",
   });
   assert.deepEqual(body.categories[0], {
     name: "Robots",
@@ -194,6 +238,7 @@ test("equipment detail includes public metadata, bundle contents and reservation
   assert.equal(item.publicSpecifications, "Wireless robot platform");
   assert.equal(item.components[0].name, "Robot");
   assert.equal(item.components[0].requiredOnReturn, true);
+  assert.equal(item.components[0].photoUrl, "https://example.test/robot.jpg");
   assert.equal(item.reservations[0].memberName, "Ranul");
   assert.equal(item.reservations[0].canShare, true);
   assert.equal("adminNotes" in item, false);
@@ -409,4 +454,75 @@ test("administrator login locks after repeated failures", async () => {
   );
   assert.equal(response.status, 429);
   assert.equal((await response.json()).error.code, "login_temporarily_locked");
+});
+
+test("administrator data includes equipment photos, bundle photos, members and NFC labels", async () => {
+  const { environment } = mutationEnvironment();
+  const token = await loginAdmin(environment);
+  const response = await worker.fetch(
+    new Request("https://api.example/api/v1/admin/data", { headers: { authorization: `Bearer ${token}` } }),
+    environment,
+  );
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.equipment[0].photoUrl, "https://example.test/reachy.jpg");
+  assert.equal(body.equipment[0].components[0].photoUrl, "https://example.test/robot.jpg");
+  assert.equal(body.members[0].username, "ranul");
+  assert.equal(body.labels[0].tokenHint, "003-v1");
+});
+
+test("administrator can update a bundle and its component photos", async () => {
+  const { environment, state } = mutationEnvironment();
+  const token = await loginAdmin(environment);
+  const response = await worker.fetch(
+    new Request("https://api.example/api/v1/admin/equipment/ROB-003", {
+      method: "PUT",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        origin: "https://pair-lab-imperial.github.io",
+      },
+      body: JSON.stringify({
+        name: "Reachy Mini Wireless",
+        category: "Robots",
+        itemType: "bundle",
+        lifecycleStatus: "active",
+        currency: "GBP",
+        photoUrl: "https://example.test/reachy-new.jpg",
+        components: [{ name: "Robot", quantity: 1, requiredOnReturn: true, photoUrl: "https://example.test/robot-new.jpg" }],
+      }),
+    }),
+    environment,
+  );
+  assert.equal(response.status, 200);
+  const writes = state.writes.at(-1);
+  assert.match(writes[0].query, /UPDATE equipment SET/);
+  assert.match(writes[1].query, /DELETE FROM bundle_components/);
+  assert.match(writes[2].query, /INSERT INTO bundle_components/);
+  assert.equal(writes[0].parameters[16], "https://example.test/reachy-new.jpg");
+  assert.equal(writes[2].parameters[9], "https://example.test/robot-new.jpg");
+});
+
+test("administrator generates a replacement NFC URL while storing only its hash", async () => {
+  const { environment, state } = mutationEnvironment();
+  const token = await loginAdmin(environment);
+  const response = await worker.fetch(
+    new Request("https://api.example/api/v1/admin/labels", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        origin: "https://pair-lab-imperial.github.io",
+      },
+      body: JSON.stringify({ assetCode: "ROB-003", notes: "Replacement test" }),
+    }),
+    environment,
+  );
+  assert.equal(response.status, 201);
+  const body = await response.json();
+  assert.match(body.label.scanUrl, /^https:\/\/pair-lab-imperial\.github\.io\/nfc-inventory\/\?t=/);
+  const writes = state.writes.at(-1);
+  assert.match(writes[0].query, /status = 'replaced'/);
+  assert.match(writes[1].parameters[2], /^[a-f0-9]{64}$/);
+  assert.equal(writes[1].parameters.includes(body.label.scanUrl.split("?t=")[1]), false);
 });

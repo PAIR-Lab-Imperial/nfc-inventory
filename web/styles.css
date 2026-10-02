@@ -253,19 +253,13 @@ h2 { letter-spacing: -0.025em; }
 .status-missing,
 .status-retired { color: var(--danger); background: var(--danger-bg); }
 
-.category-mark {
-  width: 4rem;
-  height: 4rem;
-  margin-top: 1.6rem;
-  display: grid;
-  place-items: center;
-  color: var(--navy);
-  background: linear-gradient(145deg, #e6f4f7, #eef3f8);
-  border: 1px solid #d6e8ed;
-  border-radius: 1rem;
-  font-size: 0.8rem;
-  font-weight: 850;
-  letter-spacing: 0.05em;
+.equipment-card-photo {
+  width: calc(100% + 2.3rem);
+  height: 10rem;
+  margin: 1rem -1.15rem 0;
+  object-fit: contain;
+  background: #eef3f8;
+  border-block: 1px solid var(--line);
 }
 
 .card-copy { margin-top: 1.25rem; }
@@ -347,10 +341,20 @@ h2 { letter-spacing: -0.025em; }
 .detail-hero {
   margin-top: 2rem;
   display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(17rem, 0.55fr);
+  grid-template-columns: minmax(14rem, 0.65fr) minmax(0, 1.15fr) minmax(17rem, 0.55fr);
   align-items: end;
   gap: clamp(2rem, 6vw, 5rem);
 }
+
+.detail-photo-frame {
+  overflow: hidden;
+  aspect-ratio: 4 / 3;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  box-shadow: var(--shadow);
+}
+.detail-photo-frame img { width: 100%; height: 100%; display: block; object-fit: contain; }
 
 .detail-title .card-topline { justify-content: flex-start; margin-bottom: 1.5rem; }
 .detail-title h1 { font-size: clamp(2.6rem, 6vw, 4.8rem); }
@@ -418,7 +422,8 @@ h2 { letter-spacing: -0.025em; }
 .record-note p { margin: 0.35rem 0 0; color: var(--muted); line-height: 1.55; }
 
 .component-list { margin: 1.3rem 0 0; padding: 0; list-style: none; }
-.component-list li { padding: 0.85rem 0; display: flex; align-items: center; justify-content: space-between; gap: 1rem; border-top: 1px solid var(--line); }
+.component-list li { padding: 0.85rem 0; display: grid; grid-template-columns: 4rem 1fr auto; align-items: center; gap: 1rem; border-top: 1px solid var(--line); }
+.component-list li > img { width: 4rem; height: 4rem; object-fit: contain; background: #eef3f8; border: 1px solid var(--line); border-radius: 0.65rem; }
 .component-list li > div { display: grid; gap: 0.2rem; }
 .component-list li > div span { color: var(--muted); font-size: 0.78rem; }
 .return-flag { color: var(--success); font-size: 0.75rem; font-weight: 750; }

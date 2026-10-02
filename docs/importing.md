@@ -40,6 +40,9 @@ be omitted.
   is required when a price is present.
 - Bundle quantities are positive whole numbers and `required_on_return` is
   `Yes` or `No`.
+- `photo_reference` is present on both Equipment and Bundle contents. It must
+  be an HTTP or HTTPS URL. Use the maintained placeholder URL until a reviewed
+  product or lab photograph is available.
 - Usernames are unique and contain letters, numbers, dots, underscores or
   hyphens.
 
@@ -49,9 +52,9 @@ the real components when they are known.
 
 ## File references
 
-`manual_url` must be an HTTP or HTTPS address and is public. Certificate,
-receipt, record and photo references are admin-only. Those reference fields may
-contain either an HTTP/HTTPS address or a future storage key.
+`manual_url` must be an HTTP or HTTPS address and is public. The primary photo
+reference is also public. Certificate, receipt and record references are
+admin-only and may contain either an HTTP/HTTPS address or a future storage key.
 
 ## Initial production seed
 

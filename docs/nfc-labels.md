@@ -70,5 +70,6 @@ npm run nfc:create-label -- --asset-code ROB-003 --previous-status lost --token 
 ```
 
 Never reuse a token for a different item, publish a production manifest, or
-commit generated URL files. The future administrator interface will wrap this
-same replacement operation after administrator authentication is added.
+commit generated URL files. The administrator NFC labels module now creates or
+replaces an association and displays the new scan URL once. Use the command-line
+workflow for controlled bulk preparation or recovery work.

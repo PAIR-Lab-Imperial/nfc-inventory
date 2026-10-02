@@ -36,6 +36,7 @@ const REQUIRED_HEADERS = Object.freeze({
     "quantity",
     "required_on_return",
     "notes",
+    "photo_reference",
   ],
   Members: ["username", "display_name", "active", "notes"],
 });
@@ -226,6 +227,16 @@ function referenceFile(assetCode, kind, visibility, rawValue, field, row, errors
   };
 }
 
+function publicPhotoUrl(rawValue, sheet, row, errors) {
+  const value = textValue(rawValue);
+  if (!value) return null;
+  if (!/^https?:\/\//i.test(value)) {
+    errors.push({ sheet, row, field: "photo_reference", message: "photo_reference must begin with http:// or https://" });
+    return null;
+  }
+  return value;
+}
+
 export async function loadInventoryWorkbook(inputPath) {
   const workbook = await readXlsx(inputPath);
 
@@ -303,6 +314,7 @@ export async function loadInventoryWorkbook(inputPath) {
       supplier: textValue(record.supplier) || null,
       publicNotes: textValue(record.public_notes) || null,
       adminNotes: textValue(record.admin_notes) || null,
+      primaryPhotoUrl: publicPhotoUrl(record.photo_reference, "Equipment", record._row, errors),
       row: record._row,
       raw: record,
     };
@@ -340,6 +352,7 @@ export async function loadInventoryWorkbook(inputPath) {
       quantity,
       requiredOnReturn: parseYesNo(record, "required_on_return", "Bundle contents", errors),
       notes: textValue(record.notes) || null,
+      photoUrl: publicPhotoUrl(record.photo_reference, "Bundle contents", record._row, errors),
       displayOrder: record._row - 2,
       row: record._row,
     };
@@ -373,7 +386,6 @@ export async function loadInventoryWorkbook(inputPath) {
     ["certificate_reference", "certificate", "admin"],
     ["receipt_reference", "receipt", "admin"],
     ["record_reference", "record", "admin"],
-    ["photo_reference", "photo", "admin"],
   ];
   for (const item of equipment) {
     for (const [field, kind, visibility] of fileMappings) {
@@ -438,7 +450,7 @@ export function generateInventorySql(data) {
   for (const item of data.equipment) {
     const categoryId = `(SELECT id FROM categories WHERE name = ${sqlValue(item.categoryName)} COLLATE NOCASE)`;
     lines.push(
-      `INSERT INTO equipment (id, asset_code, name, category_id, item_type, manufacturer, model, serial_number, public_specifications, location, condition, lifecycle_status, purchase_date, purchase_price_minor, currency, supplier, public_notes, admin_notes, updated_at) VALUES (${values([item.id, item.assetCode, item.name])}, ${categoryId}, ${values([item.itemType, item.manufacturer, item.model, item.serialNumber, item.publicSpecifications, item.location, item.condition, item.lifecycleStatus, item.purchaseDate, item.purchasePriceMinor, item.currency, item.supplier, item.publicNotes, item.adminNotes, timestamp])}) ON CONFLICT(asset_code) DO UPDATE SET name = excluded.name, category_id = excluded.category_id, item_type = excluded.item_type, manufacturer = excluded.manufacturer, model = excluded.model, serial_number = excluded.serial_number, public_specifications = excluded.public_specifications, location = excluded.location, condition = excluded.condition, lifecycle_status = excluded.lifecycle_status, purchase_date = excluded.purchase_date, purchase_price_minor = excluded.purchase_price_minor, currency = excluded.currency, supplier = excluded.supplier, public_notes = excluded.public_notes, admin_notes = excluded.admin_notes, updated_at = excluded.updated_at;`,
+      `INSERT INTO equipment (id, asset_code, name, category_id, item_type, manufacturer, model, serial_number, public_specifications, location, condition, lifecycle_status, purchase_date, purchase_price_minor, currency, supplier, public_notes, admin_notes, primary_photo_url, updated_at) VALUES (${values([item.id, item.assetCode, item.name])}, ${categoryId}, ${values([item.itemType, item.manufacturer, item.model, item.serialNumber, item.publicSpecifications, item.location, item.condition, item.lifecycleStatus, item.purchaseDate, item.purchasePriceMinor, item.currency, item.supplier, item.publicNotes, item.adminNotes, item.primaryPhotoUrl, timestamp])}) ON CONFLICT(asset_code) DO UPDATE SET name = excluded.name, category_id = excluded.category_id, item_type = excluded.item_type, manufacturer = excluded.manufacturer, model = excluded.model, serial_number = excluded.serial_number, public_specifications = excluded.public_specifications, location = excluded.location, condition = excluded.condition, lifecycle_status = excluded.lifecycle_status, purchase_date = excluded.purchase_date, purchase_price_minor = excluded.purchase_price_minor, currency = excluded.currency, supplier = excluded.supplier, public_notes = excluded.public_notes, admin_notes = excluded.admin_notes, primary_photo_url = excluded.primary_photo_url, updated_at = excluded.updated_at;`,
     );
   }
   lines.push("");
@@ -446,7 +458,7 @@ export function generateInventorySql(data) {
   for (const component of data.components) {
     const equipmentId = `(SELECT id FROM equipment WHERE asset_code = ${sqlValue(component.assetCode)} COLLATE NOCASE)`;
     lines.push(
-      `INSERT INTO bundle_components (id, equipment_id, component_name, manufacturer, model, serial_number, quantity, required_on_return, notes, display_order, updated_at) VALUES (${sqlValue(component.id)}, ${equipmentId}, ${values([component.componentName, component.manufacturer, component.model, component.serialNumber, component.quantity, component.requiredOnReturn, component.notes, component.displayOrder, timestamp])}) ON CONFLICT(equipment_id, component_name) DO UPDATE SET manufacturer = excluded.manufacturer, model = excluded.model, serial_number = excluded.serial_number, quantity = excluded.quantity, required_on_return = excluded.required_on_return, notes = excluded.notes, display_order = excluded.display_order, updated_at = excluded.updated_at;`,
+      `INSERT INTO bundle_components (id, equipment_id, component_name, manufacturer, model, serial_number, quantity, required_on_return, notes, photo_url, display_order, updated_at) VALUES (${sqlValue(component.id)}, ${equipmentId}, ${values([component.componentName, component.manufacturer, component.model, component.serialNumber, component.quantity, component.requiredOnReturn, component.notes, component.photoUrl, component.displayOrder, timestamp])}) ON CONFLICT(equipment_id, component_name) DO UPDATE SET manufacturer = excluded.manufacturer, model = excluded.model, serial_number = excluded.serial_number, quantity = excluded.quantity, required_on_return = excluded.required_on_return, notes = excluded.notes, photo_url = excluded.photo_url, display_order = excluded.display_order, updated_at = excluded.updated_at;`,
     );
   }
   lines.push("");
