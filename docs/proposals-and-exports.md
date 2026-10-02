@@ -5,7 +5,9 @@
 The public catalogue includes a **Propose equipment** form. A member selects their
 name, describes the requirement and may add up to eight purchasing options. Each
 option has a name and product URL, with optional supplier, price, currency and
-notes. No member login is required.
+notes. No member login is required. Any active member can edit a proposal while it
+is still `proposed`; saving asks for their username (the part before
+`@imperial.ac.uk`, not `@ic.ac.uk`) and records it in the audit trail.
 
 New submissions start in `proposed`. An administrator opens **Proposals** in the
 dashboard, reviews the links and records one of these states:

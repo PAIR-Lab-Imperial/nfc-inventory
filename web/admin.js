@@ -611,6 +611,7 @@ function openMemberDialog(member = null) {
     <form method="dialog" id="member-form" class="admin-edit-form narrow-form">
       <div class="dialog-heading"><div><p class="eyebrow">Member record</p><h2>${member ? "Edit member" : "Add member"}</h2></div><button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button></div>
       ${field("Username", "username", member?.username, `${member ? "readonly" : "required"} maxlength=80 pattern="[A-Za-z0-9._-]+"`)}
+      <p class="field-help">Use the part before @imperial.ac.uk. Do not use @ic.ac.uk.</p>
       ${field("Display name", "displayName", member?.displayName, "required maxlength=150")}
       <label class="check-field"><input name="active" type="checkbox" ${member?.active === false ? "" : "checked"}><span>Active member</span></label>
       <label><span>Notes</span><textarea name="notes" rows="3" maxlength="1000">${escapeHtml(member?.notes || "")}</textarea></label>

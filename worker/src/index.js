@@ -617,7 +617,7 @@ async function listMembers(env, origin) {
   );
 }
 
-function proposalInput(body) {
+function proposalInput(body, { requireMember = true } = {}) {
   if (!Array.isArray(body.options) || body.options.length < 1 || body.options.length > 8) {
     throw new RequestError("invalid_body", "options must contain between 1 and 8 equipment choices");
   }
@@ -649,7 +649,7 @@ function proposalInput(body) {
   return {
     title: requiredText(body, "title", 180),
     requirement: requiredText(body, "requirement", 3000),
-    requestedByMemberId: requiredText(body, "requestedByMemberId", 80),
+    requestedByMemberId: requireMember ? requiredText(body, "requestedByMemberId", 80) : null,
     options,
   };
 }
@@ -750,6 +750,65 @@ async function createProposal(request, env, origin) {
   ));
   await env.DB.batch(statements);
   return json({ proposal: { id: proposalId, title: data.title, status: "proposed", createdAt: now } }, { status: 201 }, origin);
+}
+
+async function updateProposal(request, env, origin, proposalId) {
+  requireWriteOrigin(request, origin);
+  const body = await readJsonBody(request);
+  const username = validUsername(requiredText(body, "username", 80));
+  const data = proposalInput(body, { requireMember: false });
+  const proposal = await env.DB.prepare(`
+    SELECT id, title, requirement, status
+    FROM proposals
+    WHERE id = ?1
+    LIMIT 1
+  `).bind(proposalId).first();
+  if (!proposal) throw new RequestError("proposal_not_found", "Proposal not found", 404);
+  if (proposal.status !== "proposed") {
+    throw new RequestError("proposal_not_editable", "Only proposals still under consideration can be edited by members", 409);
+  }
+  const member = await env.DB.prepare(`
+    SELECT id, username, display_name
+    FROM members
+    WHERE username = ?1 COLLATE NOCASE AND active = 1
+    LIMIT 1
+  `).bind(username).first();
+  if (!member) throw new RequestError("member_not_found", "Active member username not found", 404);
+
+  const now = new Date().toISOString();
+  const statements = [
+    env.DB.prepare(`
+      UPDATE proposals
+      SET title = ?1, requirement = ?2, updated_at = ?3
+      WHERE id = ?4 AND status = 'proposed'
+    `).bind(data.title, data.requirement, now, proposalId),
+    env.DB.prepare(`DELETE FROM proposal_options WHERE proposal_id = ?1`).bind(proposalId),
+  ];
+  for (const option of data.options) {
+    statements.push(env.DB.prepare(`
+      INSERT INTO proposal_options (
+        id, proposal_id, name, product_url, supplier, quoted_price_minor,
+        currency, notes, display_order, created_at
+      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+    `).bind(
+      option.id, proposalId, option.name, option.productUrl, option.supplier,
+      option.quotedPriceMinor, option.currency, option.notes, option.displayOrder, now,
+    ));
+  }
+  statements.push(env.DB.prepare(`
+    INSERT INTO audit_events (
+      id, actor_type, actor_name, action, entity_type, entity_id,
+      before_json, after_json, created_at
+    ) VALUES (?1, 'member', ?2, 'proposal.edited', 'proposal', ?3, ?4, ?5, ?6)
+  `).bind(
+    crypto.randomUUID(), member.username, proposalId,
+    JSON.stringify({ title: proposal.title, requirement: proposal.requirement }),
+    JSON.stringify({ title: data.title, requirement: data.requirement, optionCount: data.options.length }), now,
+  ));
+  await env.DB.batch(statements);
+  return json({
+    proposal: { id: proposalId, title: data.title, status: "proposed", updatedAt: now },
+  }, {}, origin);
 }
 
 async function resolveNfcLabel(env, token, origin) {
@@ -1806,7 +1865,7 @@ export default {
         {
           ok: true,
           service: "pair-lab-nfc-inventory-api",
-          version: "0.12.0",
+          version: "0.14.0",
         },
         {},
         allowedOrigin,
@@ -1839,6 +1898,16 @@ export default {
 
     if (request.method === "POST" && url.pathname === "/api/v1/proposals") {
       return await createProposal(request, env, allowedOrigin);
+    }
+
+    const publicProposalMatch = /^\/api\/v1\/proposals\/([^/]+)$/.exec(url.pathname);
+    if (request.method === "PUT" && publicProposalMatch) {
+      return await updateProposal(
+        request,
+        env,
+        allowedOrigin,
+        decodeRecordId(publicProposalMatch[1], "proposal"),
+      );
     }
 
     if (request.method === "POST" && url.pathname === "/api/v1/admin/login") {

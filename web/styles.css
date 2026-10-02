@@ -425,6 +425,8 @@ h2 { letter-spacing: -0.025em; }
 .proposal-received-link { color: var(--navy); font-size: 0.8rem; font-weight: 750; }
 .proposal-option small { grid-column: 1 / -1; color: var(--cyan); font-weight: 750; }
 .proposal-received-link { display: inline-flex; margin-top: 1rem; }
+.proposal-card-actions { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.proposal-card-actions .secondary-button { min-height: 2.35rem; padding: 0.45rem 0.75rem; font-size: 0.8rem; }
 
 .back-link {
   display: inline-flex;
@@ -572,6 +574,8 @@ h2 { letter-spacing: -0.025em; }
 .dialog-fields label:not(.check-field) { display: grid; gap: 0.4rem; }
 .dialog-fields label > span { color: var(--ink); font-size: 0.8rem; font-weight: 750; }
 .dialog-fields label small { color: var(--muted); font-weight: 600; }
+.dialog-fields .field-help { line-height: 1.45; }
+.field-help { margin: 0; color: var(--muted); font-size: 0.76rem; line-height: 1.45; }
 .dialog-fields input,
 .dialog-fields select,
 .dialog-fields textarea {

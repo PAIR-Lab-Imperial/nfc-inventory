@@ -62,7 +62,14 @@ class MutationStatement extends FakeStatement {
     if (this.query.includes("FROM proposal_options")) return this.state.proposalOptionRecord;
     if (this.query.includes("FROM proposals")) return this.state.proposalRecord;
     if (this.query.includes("FROM equipment")) return this.state.equipmentRecord;
-    if (this.query.includes("FROM members") && (this.query.includes("WHERE username") || this.query.includes("WHERE id"))) return this.state.memberRecord;
+    if (this.query.includes("FROM members") && this.query.includes("WHERE username")) {
+      const member = this.state.members.find((candidate) => candidate.username.toLocaleLowerCase("en-GB") === String(this.parameters[0]).toLocaleLowerCase("en-GB"));
+      return member ? { ...this.state.memberRecord, ...member } : null;
+    }
+    if (this.query.includes("FROM members") && this.query.includes("WHERE id")) {
+      const member = this.state.members.find((candidate) => candidate.id === this.parameters[0]);
+      return member ? { ...this.state.memberRecord, ...member } : null;
+    }
     return null;
   }
 
@@ -95,7 +102,7 @@ function mutationEnvironment({ openCheckout = null, currentCheckout = null, nfcL
     members: [{ id: "member-1", username: "ranul", display_name: "Ranul" }],
     categoryRecord: { id: "category-1", asset_code_prefix: "ROB" },
     equipmentRecord: { id: "equipment-1", asset_code: "ROB-003", name: "Reachy Mini Wireless", lifecycle_status: "active", availability: "free", availability_override: null },
-    memberRecord: { id: "member-1", display_name: "Ranul", active: 1, notes: null },
+    memberRecord: { id: "member-1", username: "ranul", display_name: "Ranul", active: 1, notes: null },
     adminEquipment: [{
       asset_code: "ROB-003", name: "Reachy Mini Wireless", category: "Robots", item_type: "bundle",
       manufacturer: "Pollen Robotics", model: "Mini", serial_number: "R-001",
@@ -129,7 +136,7 @@ function mutationEnvironment({ openCheckout = null, currentCheckout = null, nfcL
       quoted_price_minor: 12500, currency: "GBP", notes: "Compact", selected_option_id: null,
     }],
     proposalRecord: {
-      id: "proposal-1", title: "Mobile depth camera", status: "proposed",
+      id: "proposal-1", title: "Mobile depth camera", requirement: "Portable depth sensing", status: "proposed",
       selected_option_id: null, received_equipment_id: null, admin_notes: null,
     },
     proposalOptionRecord: { id: "option-1", name: "Camera A" },
@@ -194,6 +201,14 @@ function mutationEnvironment({ openCheckout = null, currentCheckout = null, nfcL
 function postRequest(path, body, origin = "https://pair-lab-imperial.github.io") {
   return new Request(`https://api.example${path}`, {
     method: "POST",
+    headers: { "content-type": "application/json", origin },
+    body: JSON.stringify(body),
+  });
+}
+
+function putRequest(path, body, origin = "https://pair-lab-imperial.github.io") {
+  return new Request(`https://api.example${path}`, {
+    method: "PUT",
     headers: { "content-type": "application/json", origin },
     body: JSON.stringify(body),
   });
@@ -589,6 +604,57 @@ test("public proposal routes list and create equipment suggestions", async () =>
   assert.match(writes[0].query, /INSERT INTO proposals/);
   assert.match(writes[1].query, /INSERT INTO proposal_options/);
   assert.match(writes[3].query, /proposal\.created/);
+});
+
+test("any active member can edit a proposed equipment suggestion with their username", async () => {
+  const { environment, state } = mutationEnvironment();
+  const response = await worker.fetch(
+    putRequest("/api/v1/proposals/proposal-1", {
+      username: "ranul",
+      title: "Updated camera",
+      requirement: "Portable depth and colour sensing",
+      options: [
+        { name: "Camera C", productUrl: "https://example.test/camera-c", quotedPrice: 175, currency: "GBP" },
+      ],
+    }),
+    environment,
+  );
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.proposal.title, "Updated camera");
+  const writes = state.writes.at(-1);
+  assert.equal(writes.length, 4);
+  assert.match(writes[0].query, /UPDATE proposals/);
+  assert.match(writes[1].query, /DELETE FROM proposal_options/);
+  assert.match(writes[2].query, /INSERT INTO proposal_options/);
+  assert.match(writes[3].query, /proposal\.edited/);
+  assert.equal(writes[3].parameters[1], "ranul");
+});
+
+test("member proposal edits require a username and stop after ordering", async () => {
+  const { environment, state } = mutationEnvironment();
+  const content = {
+    title: "Updated camera",
+    requirement: "Portable depth sensing",
+    options: [{ name: "Camera A", productUrl: "https://example.test/camera-a" }],
+  };
+  const missingUsername = await worker.fetch(putRequest("/api/v1/proposals/proposal-1", content), environment);
+  assert.equal(missingUsername.status, 400);
+
+  const unknownUsername = await worker.fetch(
+    putRequest("/api/v1/proposals/proposal-1", { ...content, username: "unknown-member" }),
+    environment,
+  );
+  assert.equal(unknownUsername.status, 404);
+  assert.equal((await unknownUsername.json()).error.code, "member_not_found");
+
+  state.proposalRecord.status = "ordered";
+  const ordered = await worker.fetch(
+    putRequest("/api/v1/proposals/proposal-1", { ...content, username: "ranul" }),
+    environment,
+  );
+  assert.equal(ordered.status, 409);
+  assert.equal((await ordered.json()).error.code, "proposal_not_editable");
 });
 
 test("administrator can select and order a proposed option", async () => {

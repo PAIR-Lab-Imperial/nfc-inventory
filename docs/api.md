@@ -66,7 +66,8 @@ not returned by this route or displayed in the public interface.
 ```
 
 The member is selected by display name, and the separately typed username must
-match that active member as a lightweight confirmation. Reservations are
+match that active member as a lightweight confirmation. The username is the
+part before `@imperial.ac.uk`; an `@ic.ac.uk` address must not be used. Reservations are
 advisory and may overlap; they do not prevent another member from reserving or
 checking out the same equipment. `endsAt` and the sharing note are optional at
 the API boundary.
@@ -83,7 +84,8 @@ the API boundary.
 }
 ```
 
-The typed username must identify an active member. Only one checkout may remain
+The typed username—the part before `@imperial.ac.uk`, not an `@ic.ac.uk`
+address—must identify an active member. Only one checkout may remain
 open for an equipment record or bundle. A checkout is allowed despite advisory
 reservations; members should use the visible sharing information to coordinate.
 
@@ -98,7 +100,8 @@ reservations; members should use the visible sharing information to coordinate.
 }
 ```
 
-The typed username must match the holder of the open checkout. The comparison is
+The typed username (the part before `@imperial.ac.uk`, not `@ic.ac.uk`) must
+match the holder of the open checkout. The comparison is
 case-insensitive. All three member actions create an audit event.
 
 ## Member-action security boundary
@@ -115,6 +118,11 @@ authentication; stronger controls can be added later if the workflow changes.
 catalogue. `POST /api/v1/proposals` accepts an opaque member ID, title, requirement
 and one to eight options. Each option requires a name and HTTP(S) product URL;
 supplier, price, currency and notes are optional. New records start in `proposed`.
+
+`PUT /api/v1/proposals/{proposal-id}` lets any active member edit a proposal while
+it remains in `proposed`. It accepts the same title, requirement and options plus
+`username`, which is the part before `@imperial.ac.uk` (not `@ic.ac.uk`). Saving
+replaces the proposal's option list and records the editing username in the audit log.
 
 ## Administrator authentication
 

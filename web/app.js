@@ -94,6 +94,23 @@ async function postJson(path, data) {
   return body;
 }
 
+async function putJson(path, data) {
+  if (!apiBaseUrl) throw new Error("The inventory API has not been configured.");
+  const response = await fetch(`${apiBaseUrl}${path}`, {
+    method: "PUT",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(data),
+  });
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(body?.error?.message || `Inventory request failed (HTTP ${response.status}).`);
+  }
+  return body;
+}
+
 function localDateTimeValue(date) {
   const offset = date.getTimezoneOffset() * 60_000;
   return new Date(date.valueOf() - offset).toISOString().slice(0, 16);
@@ -170,24 +187,25 @@ function proposalCard(proposal) {
       <p>${escapeHtml(proposal.requirement)}</p>
       <ul class="proposal-options">${options}</ul>
       ${receivedLink}
+      ${proposal.status === "proposed" ? `<div class="proposal-card-actions"><button class="secondary-button" type="button" data-edit-proposal="${escapeHtml(proposal.id)}">Edit proposal</button></div>` : ""}
     </article>
   `;
 }
 
-function proposalOptionRow(index) {
+function proposalOptionRow(index, option = {}) {
   return `
     <fieldset class="proposal-option-editor" data-proposal-option>
       <div class="proposal-option-editor-heading"><strong data-option-label>Option ${index + 1}</strong><button class="text-button" type="button" data-remove-proposal-option>Remove</button></div>
       <div class="field-pair">
-        <label><span>Equipment or product name</span><input name="optionName" maxlength="200" required></label>
-        <label><span>Supplier <small>(optional)</small></span><input name="optionSupplier" maxlength="200"></label>
+        <label><span>Equipment or product name</span><input name="optionName" maxlength="200" required value="${escapeHtml(option.name || "")}"></label>
+        <label><span>Supplier <small>(optional)</small></span><input name="optionSupplier" maxlength="200" value="${escapeHtml(option.supplier || "")}"></label>
       </div>
-      <label><span>Product link</span><input name="optionUrl" type="url" maxlength="2000" required placeholder="https://"></label>
+      <label><span>Product link</span><input name="optionUrl" type="url" maxlength="2000" required placeholder="https://" value="${escapeHtml(option.productUrl || "")}"></label>
       <div class="field-pair compact-fields">
-        <label><span>Price <small>(optional)</small></span><input name="optionPrice" type="number" min="0" step="0.01" inputmode="decimal"></label>
-        <label><span>Currency</span><input name="optionCurrency" value="GBP" maxlength="3" pattern="[A-Za-z]{3}"></label>
+        <label><span>Price <small>(optional)</small></span><input name="optionPrice" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(option.quotedPrice ?? "")}"></label>
+        <label><span>Currency</span><input name="optionCurrency" value="${escapeHtml(option.currency || "GBP")}" maxlength="3" pattern="[A-Za-z]{3}"></label>
       </div>
-      <label><span>Option notes <small>(optional)</small></span><textarea name="optionNotes" maxlength="1000" rows="2"></textarea></label>
+      <label><span>Option notes <small>(optional)</small></span><textarea name="optionNotes" maxlength="1000" rows="2">${escapeHtml(option.notes || "")}</textarea></label>
     </fieldset>
   `;
 }
@@ -281,7 +299,8 @@ function renderCatalogue(data, proposalData, memberData, { message = "" } = {}) 
           <button class="icon-button" type="button" data-close-proposal-dialog aria-label="Close">×</button>
         </div>
         <div class="dialog-fields">
-          <label><span>Lab member</span><select name="requestedByMemberId" required><option value="">Select your name</option>${memberData.members.map((member) => `<option value="${escapeHtml(member.id)}">${escapeHtml(member.displayName)}</option>`).join("")}</select></label>
+          <label data-create-proposal-member><span>Lab member</span><select name="requestedByMemberId" required><option value="">Select your name</option>${memberData.members.map((member) => `<option value="${escapeHtml(member.id)}">${escapeHtml(member.displayName)}</option>`).join("")}</select></label>
+          <label data-edit-proposal-username hidden><span>Confirm with your username</span><input name="username" type="text" maxlength="80" autocomplete="username" placeholder="Your username"><small class="field-help">Username is the part before @imperial.ac.uk. Do not use @ic.ac.uk.</small></label>
           <label><span>Proposal title</span><input name="title" maxlength="180" required placeholder="For example: Mobile depth camera"></label>
           <label><span>Requirement</span><textarea name="requirement" maxlength="3000" rows="4" required placeholder="What capability is needed, where it will be used, and any important constraints"></textarea></label>
           <div class="proposal-options-heading"><div><p class="eyebrow">Choices</p><h3>Equipment options</h3></div><button class="secondary-button" id="add-proposal-option" type="button">Add option</button></div>
@@ -339,6 +358,12 @@ function renderCatalogue(data, proposalData, memberData, { message = "" } = {}) 
   const optionsEditor = document.querySelector("#proposal-options-editor");
   const proposalError = document.querySelector("#proposal-error");
   const proposalSubmit = document.querySelector("#proposal-submit");
+  const proposalDialogTitle = document.querySelector("#proposal-dialog-title");
+  const createMemberField = proposalForm.querySelector("[data-create-proposal-member]");
+  const editUsernameField = proposalForm.querySelector("[data-edit-proposal-username]");
+  const memberSelect = proposalForm.elements.requestedByMemberId;
+  const usernameInput = proposalForm.elements.username;
+  let proposalBeingEdited = null;
   const refreshProposalOptionControls = () => {
     const rows = [...optionsEditor.querySelectorAll("[data-proposal-option]")];
     rows.forEach((row, index) => {
@@ -347,10 +372,42 @@ function renderCatalogue(data, proposalData, memberData, { message = "" } = {}) 
     });
     document.querySelector("#add-proposal-option").disabled = rows.length >= 8;
   };
-  document.querySelector("#open-proposal-dialog").addEventListener("click", () => {
+  const openCreateProposal = () => {
+    proposalBeingEdited = null;
+    proposalForm.reset();
+    optionsEditor.innerHTML = proposalOptionRow(0);
+    createMemberField.hidden = false;
+    memberSelect.required = true;
+    editUsernameField.hidden = true;
+    usernameInput.required = false;
+    proposalDialogTitle.textContent = "Propose equipment";
+    proposalSubmit.textContent = "Submit proposal";
     proposalError.hidden = true;
+    refreshProposalOptionControls();
     proposalDialog.showModal();
-    proposalForm.querySelector("select")?.focus();
+    memberSelect.focus();
+  };
+  document.querySelector("#open-proposal-dialog").addEventListener("click", openCreateProposal);
+  document.querySelectorAll("[data-edit-proposal]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const proposal = proposalData.proposals.find((candidate) => candidate.id === button.dataset.editProposal);
+      if (!proposal || proposal.status !== "proposed") return;
+      proposalBeingEdited = proposal;
+      proposalForm.reset();
+      createMemberField.hidden = true;
+      memberSelect.required = false;
+      editUsernameField.hidden = false;
+      usernameInput.required = true;
+      proposalForm.elements.title.value = proposal.title;
+      proposalForm.elements.requirement.value = proposal.requirement;
+      optionsEditor.innerHTML = proposal.options.map((option, index) => proposalOptionRow(index, option)).join("");
+      proposalDialogTitle.textContent = "Edit proposal";
+      proposalSubmit.textContent = "Save changes";
+      proposalError.hidden = true;
+      refreshProposalOptionControls();
+      proposalDialog.showModal();
+      proposalForm.elements.title.focus();
+    });
   });
   document.querySelectorAll("[data-close-proposal-dialog]").forEach((button) => button.addEventListener("click", () => proposalDialog.close()));
   document.querySelector("#add-proposal-option").addEventListener("click", () => {
@@ -381,22 +438,28 @@ function renderCatalogue(data, proposalData, memberData, { message = "" } = {}) 
       };
     });
     proposalSubmit.disabled = true;
-    proposalSubmit.textContent = "Submitting…";
+    proposalSubmit.textContent = proposalBeingEdited ? "Saving…" : "Submitting…";
     proposalError.hidden = true;
     try {
-      await postJson("/api/v1/proposals", {
-        requestedByMemberId: formData.get("requestedByMemberId"),
+      const payload = {
         title: formData.get("title"),
         requirement: formData.get("requirement"),
         options,
-      });
+      };
+      if (proposalBeingEdited) {
+        payload.username = formData.get("username");
+        await putJson(`/api/v1/proposals/${encodeURIComponent(proposalBeingEdited.id)}`, payload);
+      } else {
+        payload.requestedByMemberId = formData.get("requestedByMemberId");
+        await postJson("/api/v1/proposals", payload);
+      }
       proposalDialog.close();
-      await loadCatalogue("Proposal submitted.");
+      await loadCatalogue(proposalBeingEdited ? "Proposal updated." : "Proposal submitted.");
     } catch (error) {
       proposalError.textContent = error instanceof Error ? error.message : "The proposal could not be submitted.";
       proposalError.hidden = false;
       proposalSubmit.disabled = false;
-      proposalSubmit.textContent = "Submit proposal";
+      proposalSubmit.textContent = proposalBeingEdited ? "Save changes" : "Submit proposal";
     }
   });
   refreshProposalOptionControls();
@@ -434,7 +497,7 @@ function actionDialogMarkup(kind, item, members) {
     return `
       <p class="dialog-intro">Reserve <strong>${escapeHtml(item.assetCode)}</strong>. Reservations are advisory and may overlap.</p>
       <label><span>Lab member</span><select name="memberId" required><option value="">Select your name</option>${memberOptions}</select></label>
-      <label><span>Confirm with your username</span><input name="username" type="text" maxlength="80" autocomplete="username" required placeholder="Your username"></label>
+      <label><span>Confirm with your username</span><input name="username" type="text" maxlength="80" autocomplete="username" required placeholder="Your username"><small class="field-help">Username is the part before @imperial.ac.uk. Do not use @ic.ac.uk.</small></label>
       <div class="field-pair">
         <label><span>Start</span><input name="startsAt" type="datetime-local" value="${localDateTimeValue(now)}" required></label>
         <label><span>Tentative end</span><input name="endsAt" type="datetime-local" value="${localDateTimeValue(tomorrow)}" required></label>
@@ -447,7 +510,7 @@ function actionDialogMarkup(kind, item, members) {
   if (kind === "checkout") {
     return `
       <p class="dialog-intro">Check out <strong>${escapeHtml(item.assetCode)}</strong>. Enter your active lab username as a lightweight confirmation.</p>
-      <label><span>Lab username</span><input name="username" type="text" maxlength="80" autocomplete="username" required placeholder="Your username"></label>
+      <label><span>Lab username</span><input name="username" type="text" maxlength="80" autocomplete="username" required placeholder="Your username"><small class="field-help">Username is the part before @imperial.ac.uk. Do not use @ic.ac.uk.</small></label>
       <label><span>Expected return <small>(optional)</small></span><input name="expectedReturnAt" type="datetime-local" value="${localDateTimeValue(tomorrow)}"></label>
       <label><span>Checkout note <small>(optional)</small></span><textarea name="checkoutNotes" maxlength="500" rows="3" placeholder="Anything other members should know"></textarea></label>
     `;
@@ -455,7 +518,7 @@ function actionDialogMarkup(kind, item, members) {
 
   return `
     <p class="dialog-intro">Return <strong>${escapeHtml(item.assetCode)}</strong>. The username must match the current holder.</p>
-    <label><span>Current holder’s username</span><input name="username" type="text" maxlength="80" autocomplete="username" required placeholder="Your username"></label>
+    <label><span>Current holder’s username</span><input name="username" type="text" maxlength="80" autocomplete="username" required placeholder="Your username"><small class="field-help">Username is the part before @imperial.ac.uk. Do not use @ic.ac.uk.</small></label>
     <label><span>Return note <small>(optional)</small></span><textarea name="returnNotes" maxlength="500" rows="3" placeholder="Condition, missing parts, or other notes"></textarea></label>
   `;
 }
@@ -500,7 +563,7 @@ function renderDetail(item, members, { message = "" } = {}) {
     ? `
       <section class="detail-section action-section">
         <div class="section-heading"><p class="eyebrow">Member actions</p><h2>Use this equipment</h2></div>
-        <p>Select your name to reserve. Checkout and return use your typed username as a lightweight confirmation, not a password.</p>
+        <p>Select your name to reserve. Checkout and return use your typed username—the part before @imperial.ac.uk, not @ic.ac.uk—as a lightweight confirmation, not a password.</p>
         <div class="action-buttons">
           ${primaryAction}
           <button class="secondary-button" type="button" data-equipment-action="reserve">Reserve dates</button>
