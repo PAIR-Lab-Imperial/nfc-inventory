@@ -36,5 +36,8 @@ The workbook under `data/templates/` is the round-trip format for equipment,
 bundle components, members and categories. Reservations, checkouts, NFC labels,
 proposals, files and audit events are operational data and are exported separately.
 
-Imports are validated as a complete transaction. Invalid rows produce a report;
-they do not leave a partially updated inventory.
+The importer validates the complete workbook before producing SQL. Invalid rows
+produce errors and no SQL file is written. The generated import is upsert-only,
+so omitted rows cannot delete database records or their operational history.
+Cloudflare applies the generated SQL file atomically and restores the previous
+database state if execution fails. See `docs/importing.md` for the workflow.

@@ -8,6 +8,7 @@ Current production foundation:
 - GitHub Pages: `https://pair-lab-imperial.github.io/nfc-inventory/`
 - Worker API: `https://pair-lab-nfc-inventory-api.pair-lab-nfc-inventory.workers.dev/`
 - D1 database: `pair-lab-nfc-inventory` in Western Europe
+- Initial seed: 9 categories, 31 equipment units, 3 bundle components and 6 members
 
 ## 1. GitHub Pages
 

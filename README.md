@@ -32,7 +32,7 @@ docs/                   Architecture and deployment documentation
 - [x] Repository structure and initial D1 schema
 - [x] Static site and Worker API scaffolds
 - [x] Production D1 database and Worker foundation deployed
-- [ ] Equipment workbook importer
+- [x] Validated workbook importer and initial production inventory seed
 - [ ] Public catalogue and NFC item pages
 - [ ] Reservations and equipment check-in/out
 - [ ] Administrator authentication and dashboard
@@ -45,6 +45,9 @@ Prerequisites: Node.js 20 or newer and a Cloudflare account for Worker/D1 work.
 
 ```bash
 npm install
+npm run db:migrate:local
+npm run inventory:validate
+npm run db:seed:local
 npm run worker:dev
 ```
 
@@ -58,7 +61,8 @@ Production foundation:
 
 See [docs/architecture.md](docs/architecture.md),
 [docs/data-model.md](docs/data-model.md), and
-[docs/deployment.md](docs/deployment.md) before deployment.
+[docs/importing.md](docs/importing.md) before changing inventory data. See
+[docs/deployment.md](docs/deployment.md) for production setup.
 
 ## Data handling
 
