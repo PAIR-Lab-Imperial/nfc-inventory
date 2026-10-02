@@ -55,6 +55,11 @@ replacement. Equipment and every bundle component can use a separate public phot
 URL. New records default to the maintained placeholder when no reviewed image is
 available.
 
+The availability override includes **Not yet unboxed** for equipment that has
+arrived but is not ready for members. This state appears in the public catalogue
+and blocks member reservations and checkout. An administrator changes it to
+Available after the equipment has been unpacked and checked.
+
 Each active NFC association also has a programming state. An administrator can
 mark the label **Written** after programming the physical sticker, or return it
 to **Not written** if the write needs to be repeated. The dashboard records when

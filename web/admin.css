@@ -99,6 +99,7 @@
 .admin-status.status-free { color: var(--success); background: var(--success-bg); }
 .admin-status.status-reserved { color: var(--reserved); background: var(--reserved-bg); }
 .admin-status.status-in_use { color: var(--use); background: var(--use-bg); }
+.admin-status.status-not_unboxed { color: var(--reserved); background: var(--reserved-bg); }
 .admin-status.status-proposed { color: var(--reserved); background: var(--reserved-bg); }
 .admin-status.status-ordered { color: var(--use); background: var(--use-bg); }
 .admin-status.status-received { color: var(--success); background: var(--success-bg); }

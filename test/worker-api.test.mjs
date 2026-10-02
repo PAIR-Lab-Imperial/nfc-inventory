@@ -94,7 +94,7 @@ function mutationEnvironment({ openCheckout = null, currentCheckout = null, nfcL
     },
     members: [{ id: "member-1", username: "ranul", display_name: "Ranul" }],
     categoryRecord: { id: "category-1", asset_code_prefix: "ROB" },
-    equipmentRecord: { id: "equipment-1", asset_code: "ROB-003", name: "Reachy Mini Wireless", lifecycle_status: "active", availability: "free" },
+    equipmentRecord: { id: "equipment-1", asset_code: "ROB-003", name: "Reachy Mini Wireless", lifecycle_status: "active", availability: "free", availability_override: null },
     memberRecord: { id: "member-1", display_name: "Ranul", active: 1, notes: null },
     adminEquipment: [{
       asset_code: "ROB-003", name: "Reachy Mini Wireless", category: "Robots", item_type: "bundle",
@@ -179,7 +179,7 @@ function mutationEnvironment({ openCheckout = null, currentCheckout = null, nfcL
             return usernameMatches && idMatches;
           });
           return [
-            { results: [{ id: "equipment-1", asset_code: "ROB-003", name: "Reachy Mini Wireless", lifecycle_status: "active" }] },
+            { results: [{ ...state.equipmentRecord }] },
             { results: memberResults },
           ];
         }
@@ -292,6 +292,12 @@ test("equipment detail includes public metadata, bundle contents and reservation
 });
 
 test("invalid filters and unknown equipment use stable error responses", async () => {
+  const notUnboxedResponse = await worker.fetch(
+    new Request("https://api.example/api/v1/equipment?availability=not_unboxed"),
+    fakeEnvironment(),
+  );
+  assert.equal(notUnboxedResponse.status, 200);
+
   const invalidResponse = await worker.fetch(
     new Request("https://api.example/api/v1/equipment?availability=busy"),
     fakeEnvironment(),
@@ -407,6 +413,20 @@ test("checkout creates one open checkout and rejects an existing one", async () 
   );
   assert.equal(conflict.status, 409);
   assert.equal((await conflict.json()).error.code, "already_checked_out");
+});
+
+test("member actions reject equipment that has not yet been unboxed", async () => {
+  const { environment, state } = mutationEnvironment();
+  state.equipmentRecord.availability_override = "not_unboxed";
+  const response = await worker.fetch(
+    postRequest("/api/v1/equipment/ROB-003/checkouts", {
+      username: "ranul",
+      expectedReturnAt: "2099-10-04T17:00:00.000Z",
+    }),
+    environment,
+  );
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).error.code, "equipment_not_unboxed");
 });
 
 test("return requires the current holder username", async () => {
@@ -721,9 +741,33 @@ test("administrator availability override replaces conflicting member state and 
   assert.equal(body.availability.availability, "reserved");
   assert.equal(body.availability.memberName, "Ranul");
   const writes = state.writes.at(-1);
+  assert.equal(writes.length, 5);
+  assert.match(writes[0].query, /UPDATE equipment/);
+  assert.equal(writes[0].parameters[0], null);
+  assert.match(writes[1].query, /UPDATE reservations/);
+  assert.match(writes[2].query, /UPDATE checkouts/);
+  assert.match(writes[3].query, /INSERT INTO reservations/);
+  assert.match(writes[4].query, /availability_overridden/);
+});
+
+test("administrator can mark equipment not yet unboxed without selecting a member", async () => {
+  const { environment, state } = mutationEnvironment();
+  const token = await loginAdmin(environment);
+  const response = await worker.fetch(new Request("https://api.example/api/v1/admin/equipment/ROB-003/availability", {
+    method: "PUT",
+    headers: {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+      origin: "https://pair-lab-imperial.github.io",
+    },
+    body: JSON.stringify({ availability: "not_unboxed", note: "Awaiting setup" }),
+  }), environment);
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.availability.availability, "not_unboxed");
+  assert.equal(body.availability.memberName, null);
+  const writes = state.writes.at(-1);
   assert.equal(writes.length, 4);
-  assert.match(writes[0].query, /UPDATE reservations/);
-  assert.match(writes[1].query, /UPDATE checkouts/);
-  assert.match(writes[2].query, /INSERT INTO reservations/);
+  assert.equal(writes[0].parameters[0], "not_unboxed");
   assert.match(writes[3].query, /availability_overridden/);
 });

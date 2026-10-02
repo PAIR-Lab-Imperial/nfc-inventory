@@ -14,6 +14,7 @@ const statusLabels = Object.freeze({
   maintenance: "Maintenance",
   missing: "Missing",
   retired: "Retired",
+  not_unboxed: "Not yet unboxed",
 });
 
 const proposalStatusLabels = Object.freeze({
@@ -244,6 +245,7 @@ function renderCatalogue(data, proposalData, memberData, { message = "" } = {}) 
             <option value="free">Available</option>
             <option value="reserved">Reserved</option>
             <option value="in_use">In use</option>
+            <option value="not_unboxed">Not yet unboxed</option>
             <option value="maintenance">Maintenance</option>
             <option value="missing">Missing</option>
             <option value="retired">Retired</option>
@@ -404,6 +406,7 @@ function detailDefinition(label, value) {
 
 function availabilityMessage(item) {
   if (item.availability === "free") return "Available now.";
+  if (item.availability === "not_unboxed") return "This item has arrived but has not yet been unboxed and made ready for use.";
   if (item.availability === "in_use") {
     return item.currentUser ? `Currently with ${item.currentUser}.` : "Currently in use.";
   }
@@ -486,7 +489,7 @@ function renderDetail(item, members, { message = "" } = {}) {
       </div>
     `
     : `<p class="muted-copy">No current or upcoming reservations.</p>`;
-  const canAct = item.lifecycleStatus === "active";
+  const canAct = item.lifecycleStatus === "active" && item.availability !== "not_unboxed";
   const primaryAction = item.availability === "in_use"
     ? `<button class="primary-button" type="button" data-equipment-action="return">Return equipment</button>`
     : `<button class="primary-button" type="button" data-equipment-action="checkout">Check out now</button>`;
@@ -504,7 +507,7 @@ function renderDetail(item, members, { message = "" } = {}) {
     : `
       <section class="detail-section action-section unavailable-action">
         <div class="section-heading"><p class="eyebrow">Member actions</p><h2>Actions unavailable</h2></div>
-        <p>This record is marked ${escapeHtml(statusLabel(item.lifecycleStatus).toLocaleLowerCase("en-GB"))}. An administrator must reactivate it first.</p>
+        <p>${item.availability === "not_unboxed" ? "This item must be unboxed and marked available by an administrator before members can reserve or check it out." : `This record is marked ${escapeHtml(statusLabel(item.lifecycleStatus).toLocaleLowerCase("en-GB"))}. An administrator must reactivate it first.`}</p>
       </section>
     `;
 

@@ -11,6 +11,7 @@ const AVAILABILITY_VALUES = new Set([
   "maintenance",
   "missing",
   "retired",
+  "not_unboxed",
 ]);
 
 const ADMIN_SESSION_SECONDS = 4 * 60 * 60;
@@ -19,7 +20,7 @@ const LOGIN_MAX_FAILURES = 5;
 const ITEM_TYPES = new Set(["individual", "bundle"]);
 const CONDITIONS = new Set(["good", "fair", "damaged", "unknown"]);
 const LIFECYCLE_STATUSES = new Set(["active", "maintenance", "missing", "retired"]);
-const ADMIN_AVAILABILITY_VALUES = new Set(["free", "reserved", "in_use"]);
+const ADMIN_AVAILABILITY_VALUES = new Set(["free", "reserved", "in_use", "not_unboxed"]);
 const PROPOSAL_STATUSES = new Set(["proposed", "ordered", "received"]);
 
 class RequestError extends Error {
@@ -1152,7 +1153,7 @@ async function overrideAdminAvailability(request, env, origin, assetCode) {
   }
 
   let member = null;
-  if (availability !== "free") {
+  if (["reserved", "in_use"].includes(availability)) {
     const username = validUsername(requiredText(body, "username", 80));
     member = await env.DB.prepare(`
       SELECT id, username, display_name
@@ -1166,6 +1167,11 @@ async function overrideAdminAvailability(request, env, origin, assetCode) {
   const now = new Date().toISOString();
   if (until && until <= now) throw new RequestError("invalid_time_range", "until must be later than now");
   const statements = [
+    env.DB.prepare(`
+      UPDATE equipment
+      SET availability_override = ?1, record_version = record_version + 1, updated_at = ?2
+      WHERE id = ?3
+    `).bind(availability === "not_unboxed" ? "not_unboxed" : null, now, equipment.id),
     env.DB.prepare(`
       UPDATE reservations
       SET status = 'cancelled', updated_at = ?2
@@ -1598,7 +1604,7 @@ async function findEquipmentAndMember(env, assetCode, username, memberId = null)
     `).bind(username);
   const [equipmentResult, memberResult] = await env.DB.batch([
     env.DB.prepare(`
-      SELECT id, asset_code, name, lifecycle_status
+      SELECT id, asset_code, name, lifecycle_status, availability_override
       FROM equipment
       WHERE asset_code = ?1 COLLATE NOCASE
       LIMIT 1
@@ -1617,6 +1623,9 @@ async function findEquipmentAndMember(env, assetCode, username, memberId = null)
   }
   if (equipment.lifecycle_status !== "active") {
     throw new RequestError("equipment_unavailable", `Equipment is marked as ${equipment.lifecycle_status}`, 409);
+  }
+  if (equipment.availability_override === "not_unboxed") {
+    throw new RequestError("equipment_not_unboxed", "Equipment has not yet been unboxed", 409);
   }
   return { equipment, member };
 }
@@ -1797,7 +1806,7 @@ export default {
         {
           ok: true,
           service: "pair-lab-nfc-inventory-api",
-          version: "0.10.0",
+          version: "0.11.0",
         },
         {},
         allowedOrigin,

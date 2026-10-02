@@ -316,6 +316,7 @@ h2 { letter-spacing: -0.025em; }
 .status-free { color: var(--success); background: var(--success-bg); }
 .status-reserved { color: var(--reserved); background: var(--reserved-bg); }
 .status-in_use { color: var(--use); background: var(--use-bg); }
+.status-not_unboxed { color: var(--reserved); background: var(--reserved-bg); }
 .status-maintenance,
 .status-missing,
 .status-retired { color: var(--danger); background: var(--danger-bg); }
@@ -458,6 +459,7 @@ h2 { letter-spacing: -0.025em; }
 .status-border-free { border-top-color: var(--success); }
 .status-border-reserved { border-top-color: var(--reserved); }
 .status-border-in_use { border-top-color: var(--use); }
+.status-border-not_unboxed { border-top-color: var(--reserved); }
 .status-border-maintenance,
 .status-border-missing,
 .status-border-retired { border-top-color: var(--danger); }

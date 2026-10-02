@@ -150,9 +150,11 @@ component list as one D1 batch. Asset codes remain immutable.
 
 `PUT /api/v1/admin/equipment/{asset-code}/availability` lets an administrator
 override the current member-entered availability for lifecycle-active equipment.
-The `availability` value is `free`, `reserved` or `in_use`. Reserved and in-use
-overrides also require an active member `username`; `until` and `note` are
-optional, while `canShare` applies to reservations. The operation cancels any
+The `availability` value is `free`, `reserved`, `in_use` or `not_unboxed`.
+Reserved and in-use overrides also require an active member `username`; `until`
+and `note` are optional, while `canShare` applies to reservations. The
+`not_unboxed` state needs no member and blocks member actions until an
+administrator marks the item free. The operation cancels any
 reservation active at that moment, closes an open checkout, creates the selected
 replacement reservation or checkout where needed, and writes an audit event.
 Future reservations are preserved.

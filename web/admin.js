@@ -123,6 +123,7 @@ const availabilityLabels = Object.freeze({
   free: "Available",
   reserved: "Reserved",
   in_use: "In use",
+  not_unboxed: "Not yet unboxed",
 });
 
 function downloadFile(contents, filename, type) {
@@ -466,7 +467,7 @@ function openAvailabilityDialog(item) {
     <form method="dialog" id="availability-form" class="admin-edit-form narrow-form">
       <div class="dialog-heading"><div><p class="eyebrow">Administrator override</p><h2>${escapeHtml(item.assetCode)} availability</h2></div><button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button></div>
       <p class="dialog-copy">Current state: <strong>${escapeHtml(availabilityLabels[item.availability] || item.availability)}</strong>${item.currentUser ? ` · ${escapeHtml(item.currentUser)}` : ""}. Saving replaces conflicting active reservations or checkouts and records an audit event.</p>
-      <label><span>Availability</span><select name="availability" required><option value="free" ${item.availability === "free" ? "selected" : ""}>Available</option><option value="reserved" ${item.availability === "reserved" ? "selected" : ""}>Reserved</option><option value="in_use" ${item.availability === "in_use" ? "selected" : ""}>In use</option></select></label>
+      <label><span>Availability</span><select name="availability" required><option value="free" ${item.availability === "free" ? "selected" : ""}>Available</option><option value="reserved" ${item.availability === "reserved" ? "selected" : ""}>Reserved</option><option value="in_use" ${item.availability === "in_use" ? "selected" : ""}>In use</option><option value="not_unboxed" ${item.availability === "not_unboxed" ? "selected" : ""}>Not yet unboxed</option></select></label>
       <div id="availability-member-fields">
         <label><span>Member</span><select name="username"><option value="">Select member</option>${memberOptions}</select></label>
       </div>
@@ -486,7 +487,7 @@ function openAvailabilityDialog(item) {
   const untilField = dialog.querySelector("#availability-until-field");
   const shareField = dialog.querySelector("#availability-share-field");
   const refreshFields = () => {
-    const needsMember = availability.value !== "free";
+    const needsMember = ["reserved", "in_use"].includes(availability.value);
     memberFields.hidden = !needsMember;
     untilField.hidden = !needsMember;
     shareField.hidden = availability.value !== "reserved";
