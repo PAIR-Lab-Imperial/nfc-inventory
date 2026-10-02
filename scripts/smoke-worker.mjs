@@ -18,7 +18,7 @@ const checks = [
   },
   {
     path: "/api/v1/members",
-    validate: (body) => Array.isArray(body.members) && body.members.length === 6,
+    validate: (body) => Array.isArray(body.members) && body.members.length === 7,
     summarize: (body) => ({ members: body.members?.length }),
   },
   {

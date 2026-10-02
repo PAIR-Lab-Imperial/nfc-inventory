@@ -12,10 +12,15 @@ test("canonical workbook validates and contains the expected seed records", asyn
     categories: 13,
     equipment: 79,
     components: 30,
-    members: 6,
+    members: 7,
     files: 33,
   });
   assert.deepEqual(report.warnings, []);
+  const naimeh = data.members.find((member) => member.username === "naimeh.fakhr-vaezi25");
+  assert.deepEqual(
+    [naimeh?.displayName, naimeh?.active, naimeh?.notes],
+    ["Naimeh", 1, null],
+  );
   assert.equal(data.equipment.filter((item) => item.name === "Azure Kinect DK").length, 2);
   assert.equal(data.equipment.filter((item) => item.primaryPhotoUrl).length, 79);
   assert.equal(data.equipment.filter((item) => !item.primaryPhotoUrl.endsWith("equipment-placeholder.svg")).length, 57);
