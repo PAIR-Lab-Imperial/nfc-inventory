@@ -3,13 +3,15 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="Find and view PAIR Lab equipment availability">
+    <meta name="description" content="PAIR Lab inventory administration">
     <meta name="theme-color" content="#123b5d">
-    <title>PAIR Lab Equipment</title>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://pair-lab-nfc-inventory-api.pair-lab-nfc-inventory.workers.dev; img-src 'self' data:; style-src 'self'; script-src 'self'; base-uri 'none'; form-action 'self'">
+    <title>Administrator · PAIR Lab Equipment</title>
     <link rel="icon" href="./favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="./styles.css">
+    <link rel="stylesheet" href="./admin.css">
     <script src="./config.js"></script>
-    <script type="module" src="./app.js"></script>
+    <script type="module" src="./admin.js"></script>
   </head>
   <body>
     <header class="site-header">
@@ -17,30 +19,30 @@
         <a class="brand" href="./" aria-label="PAIR Lab equipment catalogue">
           <span class="brand-mark" aria-hidden="true">PAIR</span>
           <span class="brand-copy">
-            <strong>Lab Equipment</strong>
+            <strong>Inventory administration</strong>
             <small>Imperial College London</small>
           </span>
         </a>
-        <span class="live-badge"><span aria-hidden="true"></span> Live inventory</span>
+        <span class="admin-badge">Restricted access</span>
       </div>
     </header>
 
-    <main id="app" class="app-shell" aria-live="polite">
+    <main id="admin-app" class="app-shell admin-shell" aria-live="polite">
       <section class="loading-state">
         <div class="spinner" aria-hidden="true"></div>
-        <h1>Loading equipment</h1>
-        <p>Connecting to the PAIR Lab inventory…</p>
+        <h1>Loading administration</h1>
+        <p>Checking the administrator session…</p>
       </section>
     </main>
 
     <noscript>
-      <p class="noscript">This catalogue requires JavaScript to load current equipment information.</p>
+      <p class="noscript">The administrator dashboard requires JavaScript.</p>
     </noscript>
 
     <footer>
       <div class="footer-inner">
+        <a href="./">← Public equipment catalogue</a>
         <span>PAIR Lab · Imperial College London</span>
-        <span><a href="./admin.html">Administrator</a> · Availability is informational and may change.</span>
       </div>
     </footer>
   </body>

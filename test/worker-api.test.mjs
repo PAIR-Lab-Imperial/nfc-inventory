@@ -47,6 +47,8 @@ class MutationStatement extends FakeStatement {
   }
 
   async first() {
+    if (this.query.includes("FROM admin_login_attempts")) return this.state.loginAttempt;
+    if (this.query.includes("AS equipment_count")) return this.state.adminSummary;
     if (this.query.includes("FROM nfc_labels")) {
       this.state.lastNfcHash = this.parameters[0];
       return this.state.nfcLabel;
@@ -57,19 +59,39 @@ class MutationStatement extends FakeStatement {
     if (this.query.includes("FROM checkouts")) return this.state.openCheckout;
     return null;
   }
+
+  async run() {
+    this.state.runs.push(this);
+    return { success: true };
+  }
 }
 
-function mutationEnvironment({ openCheckout = null, currentCheckout = null, nfcLabel = null } = {}) {
+function mutationEnvironment({ openCheckout = null, currentCheckout = null, nfcLabel = null, loginAttempt = null } = {}) {
   const state = {
     openCheckout,
     currentCheckout,
     nfcLabel,
     lastNfcHash: null,
+    loginAttempt,
+    runs: [],
+    adminSummary: {
+      equipment_count: 31,
+      category_count: 9,
+      active_member_count: 6,
+      active_label_count: 31,
+      open_checkout_count: 0,
+      active_reservation_count: 0,
+      proposed_count: 0,
+      ordered_count: 0,
+      received_count: 0,
+    },
     members: [{ id: "member-1", username: "ranul", display_name: "Ranul" }],
     writes: [],
   };
   const environment = {
     ALLOWED_ORIGIN: "https://pair-lab-imperial.github.io",
+    ADMIN_USERNAME: "test-admin",
+    ADMIN_PASSWORD: "test-password-long-enough",
     DB: {
       prepare(query) {
         return new MutationStatement(query, state);
@@ -318,4 +340,73 @@ test("write routes reject a different browser origin", async () => {
   );
   assert.equal(response.status, 403);
   assert.equal((await response.json()).error.code, "origin_not_allowed");
+});
+
+test("administrator login issues a signed session that protects the summary", async () => {
+  const { environment } = mutationEnvironment();
+  const login = await worker.fetch(
+    postRequest("/api/v1/admin/login", {
+      username: "test-admin",
+      password: "test-password-long-enough",
+    }),
+    environment,
+  );
+  assert.equal(login.status, 200);
+  const loginBody = await login.json();
+  assert.equal(loginBody.session.username, "test-admin");
+  assert.match(loginBody.session.token, /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
+
+  const summary = await worker.fetch(
+    new Request("https://api.example/api/v1/admin/summary", {
+      headers: { authorization: `Bearer ${loginBody.session.token}` },
+    }),
+    environment,
+  );
+  assert.equal(summary.status, 200);
+  const summaryBody = await summary.json();
+  assert.equal(summaryBody.admin.username, "test-admin");
+  assert.equal(summaryBody.summary.equipmentCount, 31);
+  assert.equal(summaryBody.summary.activeLabelCount, 31);
+});
+
+test("administrator routes reject invalid credentials and tampered sessions", async () => {
+  const { environment, state } = mutationEnvironment();
+  const rejected = await worker.fetch(
+    postRequest("/api/v1/admin/login", {
+      username: "test-admin",
+      password: "wrong-password",
+    }),
+    environment,
+  );
+  assert.equal(rejected.status, 401);
+  assert.equal((await rejected.json()).error.code, "invalid_credentials");
+  assert.equal(state.runs.length, 1);
+
+  const unauthorized = await worker.fetch(
+    new Request("https://api.example/api/v1/admin/summary", {
+      headers: { authorization: "Bearer invalid.token" },
+    }),
+    environment,
+  );
+  assert.equal(unauthorized.status, 401);
+  assert.equal((await unauthorized.json()).error.code, "invalid_session");
+});
+
+test("administrator login locks after repeated failures", async () => {
+  const { environment } = mutationEnvironment({
+    loginAttempt: {
+      window_started_at: new Date(Date.now() - 60_000).toISOString(),
+      failed_attempts: 4,
+      locked_until: null,
+    },
+  });
+  const response = await worker.fetch(
+    postRequest("/api/v1/admin/login", {
+      username: "test-admin",
+      password: "wrong-password",
+    }),
+    environment,
+  );
+  assert.equal(response.status, 429);
+  assert.equal((await response.json()).error.code, "login_temporarily_locked");
 });

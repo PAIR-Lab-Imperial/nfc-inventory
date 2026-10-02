@@ -1,6 +1,6 @@
 # Data model
 
-The authoritative schema is `worker/migrations/0001_initial.sql`.
+The authoritative schema is the ordered SQL under `worker/migrations/`.
 
 ## Core records
 
@@ -16,6 +16,8 @@ The authoritative schema is `worker/migrations/0001_initial.sql`.
 - `proposals` and `proposal_options`: proposed, ordered and received purchasing work.
 - `audit_events`: append-only record of important mutations.
 - `backup_runs`: operational evidence for scheduled backups.
+- `admin_login_attempts`: hashed client keys and short-lived failure counters;
+  administrator credentials are Cloudflare secrets and never database rows.
 
 ## Stable identifiers
 

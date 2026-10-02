@@ -1,0 +1,3 @@
+# Copy to .dev.vars in this directory for local Worker development. Never commit .dev.vars.
+ADMIN_USERNAME=replace-me
+ADMIN_PASSWORD=replace-with-a-long-unique-password

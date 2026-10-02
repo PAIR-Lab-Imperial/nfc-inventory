@@ -58,8 +58,13 @@ the same unit, because the current holder must be unambiguous.
 - Every administrator mutation and relevant public action creates an audit event.
 - Secrets live in Cloudflare/GitHub secret stores, never in this repository.
 
-The final administrator-authentication mechanism will be recorded in a separate
-architecture decision before the admin interface is implemented.
+Administrator credentials are stored as encrypted Cloudflare Worker secrets.
+Successful login returns a four-hour HMAC-signed bearer token that the dashboard
+keeps in `sessionStorage`, so it is discarded when that browser tab is closed.
+Changing either credential invalidates existing sessions. D1 stores only hashed
+client keys and counters for login throttling; it never stores the administrator
+password or session token. Five failed attempts within fifteen minutes lock that
+client for fifteen minutes.
 
 ## Public catalogue boundary
 

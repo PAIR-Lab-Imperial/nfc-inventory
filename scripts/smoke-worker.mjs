@@ -8,7 +8,7 @@ if (!baseUrl) {
 const checks = [
   {
     path: "/health",
-    validate: (body) => body.ok === true && body.version === "0.4.0",
+    validate: (body) => body.ok === true && body.version === "0.5.0",
     summarize: (body) => ({ ok: body.ok, version: body.version }),
   },
   {
@@ -20,6 +20,12 @@ const checks = [
     path: "/api/v1/members",
     validate: (body) => Array.isArray(body.members) && body.members.length === 6,
     summarize: (body) => ({ members: body.members?.length }),
+  },
+  {
+    path: "/api/v1/admin/summary",
+    expectedStatus: 401,
+    validate: (body) => body.error?.code === "admin_auth_required",
+    summarize: (body) => ({ protected: body.error?.code }),
   },
   {
     path: "/api/v1/nfc/demo-rob-003-v1",
@@ -50,7 +56,8 @@ for (const check of checks) {
   const allowOrigin = response.headers.get("access-control-allow-origin");
   const summary = check.summarize(body);
   console.log(JSON.stringify({ path, status: response.status, allowOrigin, summary }));
-  if (!response.ok || allowOrigin !== "https://pair-lab-imperial.github.io" || !check.validate(body)) {
+  const expectedStatus = check.expectedStatus ?? 200;
+  if (response.status !== expectedStatus || allowOrigin !== "https://pair-lab-imperial.github.io" || !check.validate(body)) {
     process.exitCode = 1;
   }
 }

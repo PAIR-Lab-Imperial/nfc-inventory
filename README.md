@@ -36,7 +36,8 @@ docs/                   Architecture and deployment documentation
 - [x] Public equipment catalogue and item record pages
 - [x] NFC token resolution and temporary dummy-label manifest
 - [x] Member reservations and equipment checkout/return
-- [ ] Administrator authentication and dashboard
+- [x] Password-protected administrator authentication and overview dashboard
+- [ ] Administrator equipment, member and label-management modules
 - [ ] Proposal workflow, exports and automated backups
 - [ ] NFC label generation and rollout
 
@@ -67,6 +68,7 @@ Public catalogue routes:
 - NFC resolver: `/api/v1/nfc/{label-token}`
 - Browser item page: `?item={asset-code}`
 - NFC scan URL: `?t={label-token}`
+- Administrator dashboard: `/admin.html`
 
 See [docs/architecture.md](docs/architecture.md),
 [docs/data-model.md](docs/data-model.md), and
@@ -74,7 +76,8 @@ See [docs/architecture.md](docs/architecture.md),
 [docs/api.md](docs/api.md) for the public API and
 [docs/deployment.md](docs/deployment.md) for production setup. The temporary
 label manifest and phone-writing workflow are covered in
-[docs/nfc-labels.md](docs/nfc-labels.md).
+[docs/nfc-labels.md](docs/nfc-labels.md). Administrator credential setup and
+rotation are covered in [docs/admin.md](docs/admin.md).
 
 ## Data handling
 

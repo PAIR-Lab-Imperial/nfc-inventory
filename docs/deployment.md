@@ -54,14 +54,26 @@ npm run db:migrate:remote
 npm run worker:deploy
 ```
 
+Configure both administrator credentials as encrypted Worker secrets. Do not add
+their values to `worker/wrangler.jsonc`, GitHub, screenshots or documentation:
+
+```bash
+npx wrangler secret put ADMIN_USERNAME --config worker/wrangler.jsonc
+npx wrangler secret put ADMIN_PASSWORD --config worker/wrangler.jsonc
+```
+
+For local development, copy `worker/.dev.vars.example` to the ignored
+`worker/.dev.vars` file and replace both placeholders. Restart `wrangler dev`
+after changing it.
+
 Set the resulting Worker URL in `web/config.js`. This URL is public configuration,
 not a secret.
 
 ## 3. Production automation
 
-Worker deployment, scheduled exports and R2 backups will be added only after the
-Cloudflare account and administrator-authentication choice are confirmed. Their
-credentials must be stored as GitHub Actions or Cloudflare secrets.
+Automated Worker deployment, scheduled exports and R2 backups will be added in a
+later phase. Their credentials must be stored as GitHub Actions or Cloudflare
+secrets.
 
 ## 4. NFC rollout gate
 

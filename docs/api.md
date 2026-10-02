@@ -106,3 +106,23 @@ authentication. Browser writes are accepted only from the configured GitHub
 Pages origin, payloads are size-limited and validated, and inactive equipment
 cannot be reserved or checked out. Origin checks are not a substitute for
 authentication; stronger controls can be added later if the workflow changes.
+
+## Administrator authentication
+
+`POST /api/v1/admin/login`
+
+Accepts an administrator `username` and `password`. On success it returns a
+four-hour signed session token. Login attempts are origin-checked and throttled;
+five failures within fifteen minutes temporarily lock the client.
+
+Protected routes require this header:
+
+```text
+Authorization: Bearer <session-token>
+```
+
+`GET /api/v1/admin/session` validates a current session.
+
+`GET /api/v1/admin/summary` returns administrator identity and record counts for
+equipment, categories, active members, labels, checkouts, reservations and
+proposal states. It does not expose the configured password or token-signing key.

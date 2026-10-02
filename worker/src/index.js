@@ -13,6 +13,10 @@ const AVAILABILITY_VALUES = new Set([
   "retired",
 ]);
 
+const ADMIN_SESSION_SECONDS = 4 * 60 * 60;
+const LOGIN_WINDOW_SECONDS = 15 * 60;
+const LOGIN_MAX_FAILURES = 5;
+
 class RequestError extends Error {
   constructor(code, message, status = 400) {
     super(message);
@@ -25,7 +29,7 @@ function withCors(headers, origin) {
   const result = new Headers(headers);
   result.set("access-control-allow-origin", origin);
   result.set("access-control-allow-methods", "GET, POST, PATCH, OPTIONS");
-  result.set("access-control-allow-headers", "content-type");
+  result.set("access-control-allow-headers", "content-type, authorization");
   result.set("vary", "Origin");
   return result;
 }
@@ -118,6 +122,91 @@ function decodeNfcToken(value) {
 async function sha256Hex(value) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function bytesToBase64Url(bytes) {
+  const binary = Array.from(bytes, (byte) => String.fromCharCode(byte)).join("");
+  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+}
+
+function base64UrlToBytes(value) {
+  if (!/^[A-Za-z0-9_-]+$/.test(value)) throw new RequestError("invalid_session", "Administrator session is invalid", 401);
+  const padding = "=".repeat((4 - (value.length % 4)) % 4);
+  let binary;
+  try {
+    binary = atob(value.replaceAll("-", "+").replaceAll("_", "/") + padding);
+  } catch {
+    throw new RequestError("invalid_session", "Administrator session is invalid", 401);
+  }
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+
+function timingSafeBytesEqual(left, right) {
+  if (left.length !== right.length) return false;
+  let difference = 0;
+  for (let index = 0; index < left.length; index += 1) difference |= left[index] ^ right[index];
+  return difference === 0;
+}
+
+async function timingSafeTextEqual(left, right) {
+  const [leftHash, rightHash] = await Promise.all([
+    crypto.subtle.digest("SHA-256", new TextEncoder().encode(left)),
+    crypto.subtle.digest("SHA-256", new TextEncoder().encode(right)),
+  ]);
+  return timingSafeBytesEqual(new Uint8Array(leftHash), new Uint8Array(rightHash));
+}
+
+function adminConfiguration(env) {
+  const username = typeof env.ADMIN_USERNAME === "string" ? env.ADMIN_USERNAME.trim() : "";
+  const password = typeof env.ADMIN_PASSWORD === "string" ? env.ADMIN_PASSWORD : "";
+  if (!username || password.length < 12) throw new Error("Administrator credentials are not configured");
+  return { username, password };
+}
+
+async function hmacSignature(value, password) {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(password),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  return new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(value)));
+}
+
+async function createAdminSession(username, password) {
+  const issuedAt = Math.floor(Date.now() / 1000);
+  const payload = bytesToBase64Url(new TextEncoder().encode(JSON.stringify({
+    sub: username,
+    iat: issuedAt,
+    exp: issuedAt + ADMIN_SESSION_SECONDS,
+  })));
+  const signature = bytesToBase64Url(await hmacSignature(payload, password));
+  return { token: `${payload}.${signature}`, expiresAt: new Date((issuedAt + ADMIN_SESSION_SECONDS) * 1000).toISOString() };
+}
+
+async function requireAdmin(request, env) {
+  const authorization = request.headers.get("authorization") || "";
+  const match = /^Bearer ([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/.exec(authorization);
+  if (!match) throw new RequestError("admin_auth_required", "Administrator sign-in is required", 401);
+  const [payloadPart, signaturePart] = match[1].split(".");
+  const { username, password } = adminConfiguration(env);
+  const expectedSignature = await hmacSignature(payloadPart, password);
+  const suppliedSignature = base64UrlToBytes(signaturePart);
+  if (!timingSafeBytesEqual(expectedSignature, suppliedSignature)) {
+    throw new RequestError("invalid_session", "Administrator session is invalid or expired", 401);
+  }
+  let payload;
+  try {
+    payload = JSON.parse(new TextDecoder().decode(base64UrlToBytes(payloadPart)));
+  } catch {
+    throw new RequestError("invalid_session", "Administrator session is invalid or expired", 401);
+  }
+  const now = Math.floor(Date.now() / 1000);
+  if (payload?.sub !== username || !Number.isInteger(payload.exp) || payload.exp <= now) {
+    throw new RequestError("invalid_session", "Administrator session is invalid or expired", 401);
+  }
+  return { username, expiresAt: new Date(payload.exp * 1000).toISOString() };
 }
 
 function nullableBoolean(value) {
@@ -469,6 +558,104 @@ async function resolveNfcLabel(env, token, origin) {
   );
 }
 
+async function adminLogin(request, env, origin) {
+  requireWriteOrigin(request, origin);
+  const body = await readJsonBody(request);
+  const suppliedUsername = requiredText(body, "username", 100);
+  const suppliedPassword = requiredText(body, "password", 500);
+  const { username, password } = adminConfiguration(env);
+  const clientAddress = request.headers.get("cf-connecting-ip") || "local-development";
+  const attemptKey = await sha256Hex(`admin-login\0${clientAddress}`);
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const windowCutoff = new Date(now.valueOf() - LOGIN_WINDOW_SECONDS * 1000).toISOString();
+  const attempt = await env.DB.prepare(`
+    SELECT window_started_at, failed_attempts, locked_until
+    FROM admin_login_attempts
+    WHERE key_hash = ?1
+    LIMIT 1
+  `).bind(attemptKey).first();
+  if (attempt?.locked_until && attempt.locked_until > nowIso) {
+    throw new RequestError("login_temporarily_locked", "Too many failed attempts. Try again later", 429);
+  }
+
+  const [usernameMatches, passwordMatches] = await Promise.all([
+    timingSafeTextEqual(suppliedUsername, username),
+    timingSafeTextEqual(suppliedPassword, password),
+  ]);
+  if (!(usernameMatches && passwordMatches)) {
+    const sameWindow = attempt?.window_started_at && attempt.window_started_at > windowCutoff;
+    const failedAttempts = sameWindow ? attempt.failed_attempts + 1 : 1;
+    const windowStartedAt = sameWindow ? attempt.window_started_at : nowIso;
+    const lockedUntil = failedAttempts >= LOGIN_MAX_FAILURES
+      ? new Date(now.valueOf() + LOGIN_WINDOW_SECONDS * 1000).toISOString()
+      : null;
+    await env.DB.prepare(`
+      INSERT INTO admin_login_attempts (
+        key_hash, window_started_at, failed_attempts, locked_until, updated_at
+      ) VALUES (?1, ?2, ?3, ?4, ?5)
+      ON CONFLICT(key_hash) DO UPDATE SET
+        window_started_at = excluded.window_started_at,
+        failed_attempts = excluded.failed_attempts,
+        locked_until = excluded.locked_until,
+        updated_at = excluded.updated_at
+    `).bind(attemptKey, windowStartedAt, failedAttempts, lockedUntil, nowIso).run();
+    if (lockedUntil) {
+      throw new RequestError("login_temporarily_locked", "Too many failed attempts. Try again later", 429);
+    }
+    throw new RequestError("invalid_credentials", "Username or password is incorrect", 401);
+  }
+
+  const staleCutoff = new Date(now.valueOf() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM admin_login_attempts WHERE key_hash = ?1").bind(attemptKey),
+    env.DB.prepare("DELETE FROM admin_login_attempts WHERE updated_at < ?1").bind(staleCutoff),
+  ]);
+  const session = await createAdminSession(username, password);
+  return json({ session: { ...session, username } }, {}, origin);
+}
+
+async function getAdminSession(request, env, origin) {
+  const admin = await requireAdmin(request, env);
+  return json({ session: admin }, {}, origin);
+}
+
+async function getAdminSummary(request, env, origin) {
+  const admin = await requireAdmin(request, env);
+  const summary = await env.DB.prepare(`
+    SELECT
+      (SELECT COUNT(*) FROM equipment) AS equipment_count,
+      (SELECT COUNT(*) FROM categories WHERE active = 1) AS category_count,
+      (SELECT COUNT(*) FROM members WHERE active = 1) AS active_member_count,
+      (SELECT COUNT(*) FROM nfc_labels WHERE status = 'active') AS active_label_count,
+      (SELECT COUNT(*) FROM checkouts WHERE returned_at IS NULL) AS open_checkout_count,
+      (SELECT COUNT(*) FROM reservations WHERE status = 'active' AND (ends_at IS NULL OR ends_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))) AS active_reservation_count,
+      (SELECT COUNT(*) FROM proposals WHERE status = 'proposed') AS proposed_count,
+      (SELECT COUNT(*) FROM proposals WHERE status = 'ordered') AS ordered_count,
+      (SELECT COUNT(*) FROM proposals WHERE status = 'received') AS received_count
+  `).first();
+  return json(
+    {
+      admin,
+      summary: {
+        equipmentCount: summary.equipment_count,
+        categoryCount: summary.category_count,
+        activeMemberCount: summary.active_member_count,
+        activeLabelCount: summary.active_label_count,
+        openCheckoutCount: summary.open_checkout_count,
+        activeReservationCount: summary.active_reservation_count,
+        proposals: {
+          proposed: summary.proposed_count,
+          ordered: summary.ordered_count,
+          received: summary.received_count,
+        },
+      },
+    },
+    {},
+    origin,
+  );
+}
+
 async function findEquipmentAndMember(env, assetCode, username) {
   const [equipmentResult, memberResult] = await env.DB.batch([
     env.DB.prepare(`
@@ -669,7 +856,7 @@ export default {
         {
           ok: true,
           service: "pair-lab-nfc-inventory-api",
-          version: "0.4.0",
+          version: "0.5.0",
         },
         {},
         allowedOrigin,
@@ -694,6 +881,18 @@ export default {
 
     if (request.method === "GET" && url.pathname === "/api/v1/members") {
       return await listMembers(env, allowedOrigin);
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/v1/admin/login") {
+      return await adminLogin(request, env, allowedOrigin);
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/v1/admin/session") {
+      return await getAdminSession(request, env, allowedOrigin);
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/v1/admin/summary") {
+      return await getAdminSummary(request, env, allowedOrigin);
     }
 
     const nfcMatch = /^\/api\/v1\/nfc\/([^/]+)$/.exec(url.pathname);
