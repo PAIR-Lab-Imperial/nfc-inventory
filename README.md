@@ -31,6 +31,7 @@ docs/                   Architecture and deployment documentation
 - [x] Canonical import/export workbook and cleaned initial inventory
 - [x] Repository structure and initial D1 schema
 - [x] Static site and Worker API scaffolds
+- [x] Production D1 database and Worker foundation deployed
 - [ ] Equipment workbook importer
 - [ ] Public catalogue and NFC item pages
 - [ ] Reservations and equipment check-in/out
@@ -49,6 +50,11 @@ npm run worker:dev
 
 The static site can be served by any local HTTP server from `web/`. Its API URL
 is configured in `web/config.js` and contains no secret.
+
+Production foundation:
+
+- Web: <https://pair-lab-imperial.github.io/nfc-inventory/>
+- API: <https://pair-lab-nfc-inventory-api.pair-lab-nfc-inventory.workers.dev/>
 
 See [docs/architecture.md](docs/architecture.md),
 [docs/data-model.md](docs/data-model.md), and

@@ -10,7 +10,7 @@
     {
       "binding": "DB",
       "database_name": "pair-lab-nfc-inventory",
-      "database_id": "replace-after-creating-d1-database",
+      "database_id": "2c2c0bf4-7f62-4709-ac5c-7d26560fc8c9",
       "migrations_dir": "migrations"
     }
   ],

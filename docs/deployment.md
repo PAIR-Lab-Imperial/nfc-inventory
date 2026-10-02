@@ -1,6 +1,13 @@
 # Deployment prerequisites
 
-No production service is created by the repository scaffold alone.
+The repository scaffold does not create production services automatically. The
+current foundation has now been deployed as described below.
+
+Current production foundation:
+
+- GitHub Pages: `https://pair-lab-imperial.github.io/nfc-inventory/`
+- Worker API: `https://pair-lab-nfc-inventory-api.pair-lab-nfc-inventory.workers.dev/`
+- D1 database: `pair-lab-nfc-inventory` in Western Europe
 
 ## 1. GitHub Pages
 
