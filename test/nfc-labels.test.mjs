@@ -3,8 +3,10 @@ import test from "node:test";
 import {
   buildNfcLabel,
   buildDummyNfcLabels,
+  buildProductionNfcLabels,
   generateDummyNfcManifest,
   generateDummyNfcSql,
+  generateProductionNfcSql,
   generateReplacementNfcSql,
   sha256Hex,
 } from "../scripts/lib/nfc-labels.mjs";
@@ -50,4 +52,18 @@ test("replacement SQL retires the prior association and stores its scan URL", ()
   assert.match(sql, new RegExp(label.tokenHash));
   assert.match(sql, /\?t=demo-rob-003-v2/);
   assert.match(label.url, /\?t=demo-rob-003-v2$/);
+});
+
+test("production batches use unique random-style tokens and replace active demo labels", () => {
+  const tokens = ["abcdefghijklmnopqrstuvwx", "zyxwvutsrqponmlkjihgfedc"];
+  const labels = buildProductionNfcLabels(equipment, undefined, () => tokens.shift());
+  assert.equal(labels.length, 2);
+  assert.doesNotMatch(labels[0].url, /demo-/);
+  assert.notEqual(labels[0].tokenHash, labels[1].tokenHash);
+  const sql = generateProductionNfcSql(labels);
+  assert.match(sql, /SET status = 'replaced'/);
+  assert.match(sql, /Production NFC association/);
+  assert.match(sql, /ON CONFLICT\(id\) DO UPDATE/);
+  assert.doesNotMatch(sql, /BEGIN TRANSACTION|\bCOMMIT\b/);
+  assert.doesNotMatch(sql, /Temporary dummy NFC association/);
 });

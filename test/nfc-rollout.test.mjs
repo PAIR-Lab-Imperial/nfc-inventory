@@ -66,3 +66,13 @@ test("rollout checklist and printable sheet include every asset", () => {
   assert.match(sheet, /PILOT · KEEP REWRITABLE/);
   assert.equal((sheet.match(/<article class="label"/g) || []).length, 2);
 });
+
+test("production label sheets omit pilot wording and warn against locking tags", () => {
+  const rows = buildRolloutRows(labels);
+  const sheet = generateLabelSheetHtml(rows, ["<svg></svg>", "<svg></svg>"], {
+    generatedAt: "2026-10-02T00:00:00.000Z",
+    pilot: false,
+  });
+  assert.doesNotMatch(sheet, /PILOT/);
+  assert.match(sheet, /do not lock the NFC tags/);
+});

@@ -1,8 +1,48 @@
 # NFC labels
 
-## Temporary pilot identifiers
+## Production identifiers
 
-The current pilot assigns one deterministic dummy token to every imported item:
+Production tags use one random, URL-safe token per equipment record. The raw
+token is stored only in the ignored production batch and the protected
+administrator export; D1 resolves a SHA-256 hash and never needs to expose the
+token publicly outside its scan URL.
+
+Generate a complete production batch from the canonical workbook with:
+
+```bash
+npm run nfc:build-production-batch
+```
+
+The command validates the workbook, generates a unique random URL for every
+item, checks each NDEF URL against the 144-byte NTAG213 user-memory limit, and
+creates these controlled files under `outputs/nfc-production-batch/`:
+
+- `nfc-production-labels.sql`: D1 associations that retire any previous active
+  label and activate this batch;
+- `nfc-production-labels.json`: the recoverable batch manifest;
+- `nfc-rollout-checklist.csv`: the programming and verification checklist;
+- `nfc-label-sheet.html`: printable labels with QR fallbacks.
+
+Do not run the generator again after deploying a batch unless every tag is to
+receive a new URL. The command refuses to overwrite an existing batch by
+default. Use `--reuse-existing --force` only to rebuild its SQL or printable
+files from the same manifest.
+
+Apply the SQL after taking a D1 backup:
+
+```bash
+npx wrangler d1 execute pair-lab-nfc-inventory --remote \
+  --config worker/wrangler.jsonc \
+  --file outputs/nfc-production-batch/nfc-production-labels.sql --yes
+```
+
+All generated production files contain working scan URLs. Keep them out of the
+repository and remove unnecessary working copies from shared computers.
+
+## Why earlier URLs contained `demo`
+
+The original pilot used deterministic identifiers so interface and phone-scan
+testing could be repeated before committing to a final batch:
 
 ```text
 demo-<lowercase-asset-code>-v1
@@ -25,10 +65,11 @@ The command creates two ignored local files:
 - `outputs/dummy-nfc-labels.csv`: asset codes, equipment names and URLs to write;
 - `outputs/dummy-nfc-labels.sql`: hashed associations for D1.
 
-Dummy tokens are suitable for interface and scanning tests. Do not permanently
-lock a physical tag containing one; generate a random replacement first.
+Those associations are now historical. They are retained in D1 with status
+`replaced` for audit purposes and no longer resolve. Dummy tokens remain useful
+only in automated tests or a disposable local database.
 
-## Generate the pilot rollout pack
+## Legacy pilot rollout pack
 
 After the canonical workbook is current, generate the printable labels and the
 per-item programming checklist:
@@ -49,11 +90,9 @@ Open the HTML file in a browser and print at **100% scale**. The pilot labels ar
 explicitly marked **KEEP REWRITABLE** because they still use dummy identifiers.
 Generated rollout files contain working tag URLs and must not be committed.
 
-Start with two pilot items: one metal-mounted and one non-metal-mounted. Complete
-every test column in the checklist before programming the rest of the inventory.
-After the pilot remains reliable for several days, generate random production
-associations from the administrator interface and download the protected
-operational JSON export. Build a production pack from those stored scan URLs:
+The earlier pilot pack can still be rebuilt for a disposable test database. For
+an already deployed production batch, a protected administrator operational
+export can recreate printable labels from the stored scan URLs:
 
 ```bash
 npm run nfc:build-rollout-pack -- \
@@ -70,7 +109,7 @@ shared computers after the rollout is recorded.
 
 Use an NFC-writing app that supports NDEF URL records, such as NFC Tools:
 
-1. Find the equipment row in `outputs/nfc-rollout-pack/nfc-rollout-checklist.csv`.
+1. Find the equipment row in `outputs/nfc-production-batch/nfc-rollout-checklist.csv`.
 2. In the app, choose **Write**, add a **URL/URI** record, and paste only that
    row's `nfc_url` value.
 3. Hold the phone over the sticker until the app confirms the write.
@@ -83,8 +122,10 @@ compartments, high-current cables, tight bends and places that are regularly
 scraped. Test the final placement before applying every label in a batch.
 
 Do not add a separate text record: one URL record is enough. Leave the tag
-rewritable during the pilot. NFC write-locking is irreversible and should only
-be considered after the random production URLs have been deployed and checked.
+rewritable after programming. A production URL does not make a tag read-only;
+only the NFC app's **Lock**, **Make read-only**, or password/protection operation
+does that. Permanent NFC write-locking is irreversible and is not required by
+this system.
 
 ## Replacing a lost or detached label
 
@@ -100,13 +141,6 @@ The SQL stores the scan URL and its token hash, retires the previous active
 association and records an audit event. Apply the SQL to D1, program the URL
 from the text file, then scan-test the new sticker. The old URL will stop
 resolving.
-
-For a temporary deterministic replacement during the pilot, explicitly supply
-a new dummy token:
-
-```bash
-npm run nfc:create-label -- --asset-code ROB-003 --previous-status lost --token demo-rob-003-v2
-```
 
 Never reuse a token for a different item, publish a production manifest, or
 commit generated URL files. The administrator NFC labels module creates or

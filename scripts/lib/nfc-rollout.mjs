@@ -143,7 +143,9 @@ export function generateLabelSheetHtml(rows, qrSvgs, { generatedAt = new Date().
   <header class="screen-header">
     <h1>PAIR Lab NFC rollout labels</h1>
     <p>${rows.length} labels · generated ${escapeHtml(generatedAt)}</p>
-    <p>Print at 100% scale on A4, cut on the dashed lines, and keep pilot NFC tags rewritable.</p>
+    <p>${pilot
+      ? "Print at 100% scale on A4, cut on the dashed lines, and keep pilot NFC tags rewritable."
+      : "Print at 100% scale on A4, cut on the dashed lines, and do not lock the NFC tags after writing."}</p>
   </header>
   <main class="sheet">${cards}
   </main>

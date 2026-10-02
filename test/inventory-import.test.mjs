@@ -9,19 +9,17 @@ test("canonical workbook validates and contains the expected seed records", asyn
   const { data, report } = await loadInventoryWorkbook(workbookPath);
   assert.deepEqual(report.errors, []);
   assert.deepEqual(report.counts, {
-    categories: 9,
-    equipment: 31,
-    components: 3,
+    categories: 10,
+    equipment: 48,
+    components: 12,
     members: 6,
-    files: 0,
+    files: 21,
   });
-  assert.equal(report.warnings.length, 2);
-  assert.deepEqual(report.warnings.map((warning) => warning.message), [
-    "AUD-001 is a Bundle but has no rows in Bundle contents",
-    "AUD-002 is a Bundle but has no rows in Bundle contents",
-  ]);
+  assert.deepEqual(report.warnings, []);
   assert.equal(data.equipment.filter((item) => item.name === "Azure Kinect DK").length, 2);
-  assert.equal(data.equipment.filter((item) => !item.primaryPhotoUrl.endsWith("equipment-placeholder.svg")).length, 17);
+  assert.equal(data.equipment.filter((item) => item.primaryPhotoUrl).length, 48);
+  assert.equal(data.equipment.filter((item) => !item.primaryPhotoUrl.endsWith("equipment-placeholder.svg")).length, 37);
+  assert.equal(data.components.filter((item) => item.photoUrl).length, 12);
   assert.match(data.equipment[0].primaryPhotoUrl, /assets\/equipment\/misty-ii\.png$/);
   assert.match(data.components[0].photoUrl, /assets\/equipment\/reachy-mini-wireless\.png$/);
 });

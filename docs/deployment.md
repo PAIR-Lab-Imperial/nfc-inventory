@@ -8,9 +8,9 @@ Current production foundation:
 - GitHub Pages: `https://pair-lab-imperial.github.io/nfc-inventory/`
 - Worker API: `https://pair-lab-nfc-inventory-api.pair-lab-nfc-inventory.workers.dev/`
 - D1 database: `pair-lab-nfc-inventory` in Western Europe
-- Initial seed: 9 categories, 31 equipment units, 3 bundle components and 6 members
+- Current inventory: 10 categories, 48 equipment units, 12 bundle components and 6 active members
 - Public catalogue, member actions and NFC token resolution
-- Temporary NFC seed: one deterministic dummy association per equipment record
+- Production NFC associations: one random, replaceable association per equipment record
 
 ## 1. GitHub Pages
 
@@ -79,7 +79,7 @@ Actions artifacts for 90 days. See `backups.md` for setup and restore testing.
 
 ## 4. NFC rollout gate
 
-Do not permanently lock or mass-program labels until all of the following are true:
+Do not permanently lock labels. Before mass-programming, confirm all of the following:
 
 - the GitHub Pages URL is stable;
 - the Worker token-resolution endpoint is deployed;
@@ -87,12 +87,13 @@ Do not permanently lock or mass-program labels until all of the following are tr
 - several unlocked pilot labels have been tested on both Android and iPhone;
 - replacement of a lost label has been tested end to end.
 
-Generate and apply the temporary pilot associations with:
+Generate and apply the production associations with:
 
 ```bash
-npm run nfc:build-dummy-labels
+npm run nfc:build-production-batch
 npx wrangler d1 execute pair-lab-nfc-inventory --remote \
-  --config worker/wrangler.jsonc --file outputs/dummy-nfc-labels.sql --yes
+  --config worker/wrangler.jsonc \
+  --file outputs/nfc-production-batch/nfc-production-labels.sql --yes
 ```
 
 See `docs/nfc-labels.md` before programming or replacing any sticker.

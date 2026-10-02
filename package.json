@@ -13,6 +13,7 @@
     "inventory:build-sql": "node scripts/import-inventory.mjs",
     "nfc:build-dummy-labels": "node scripts/build-dummy-nfc-labels.mjs",
     "nfc:build-rollout-pack": "node scripts/build-nfc-rollout-pack.mjs",
+    "nfc:build-production-batch": "node scripts/build-production-nfc-batch.mjs",
     "nfc:create-label": "node scripts/create-nfc-label.mjs",
     "worker:dev": "wrangler dev --config worker/wrangler.jsonc",
     "worker:deploy": "wrangler deploy --config worker/wrangler.jsonc",

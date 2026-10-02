@@ -34,7 +34,7 @@ docs/                   Architecture and deployment documentation
 - [x] Production D1 database and Worker foundation deployed
 - [x] Validated workbook importer and initial production inventory seed
 - [x] Public equipment catalogue and item record pages
-- [x] NFC token resolution and temporary dummy-label manifest
+- [x] NFC token resolution and replaceable production-label associations
 - [x] Member reservations and equipment checkout/return
 - [x] Password-protected administrator authentication and overview dashboard
 - [x] Administrator equipment, bundle, member and NFC-label management
@@ -43,8 +43,9 @@ docs/                   Architecture and deployment documentation
 - [x] Round-trip inventory workbook and protected operational exports
 - [x] Guarded Worker deployment and encrypted weekly backup workflows
 - [ ] Add the GitHub repository secrets and verify the first scheduled backup
-- [x] Printable NFC/QR pilot label sheets, programming checklist and NTAG213 capacity validation
-- [ ] Program and scan-test the physical pilot batch before wider rollout
+- [x] Physical NFC pilot scan-tested successfully
+- [x] 48-item production NFC/QR batch, programming checklist and NTAG213 capacity validation
+- [ ] Write and scan-test the 48 production URLs on the physical tags
 
 ## Local development
 
@@ -80,8 +81,8 @@ See [docs/architecture.md](docs/architecture.md),
 [docs/data-model.md](docs/data-model.md), and
 [docs/importing.md](docs/importing.md) before changing inventory data. See
 [docs/api.md](docs/api.md) for the public API and
-[docs/deployment.md](docs/deployment.md) for production setup. The temporary
-label manifest and phone-writing workflow are covered in
+[docs/deployment.md](docs/deployment.md) for production setup. The production
+label batch and phone-writing workflow are covered in
 [docs/nfc-labels.md](docs/nfc-labels.md). Administrator credential setup and
 rotation are covered in [docs/admin.md](docs/admin.md). Proposal review and exports
 are documented in [docs/proposals-and-exports.md](docs/proposals-and-exports.md),
