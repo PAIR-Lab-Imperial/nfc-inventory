@@ -105,6 +105,12 @@ function formatDate(value) {
   return Number.isNaN(date.valueOf()) ? value : new Intl.DateTimeFormat("en-GB", { dateStyle: "medium" }).format(date);
 }
 
+const availabilityLabels = Object.freeze({
+  free: "Available",
+  reserved: "Reserved",
+  in_use: "In use",
+});
+
 function downloadFile(contents, filename, type) {
   const blob = contents instanceof Blob ? contents : new Blob([contents], { type });
   const url = URL.createObjectURL(blob);
@@ -122,30 +128,55 @@ function exportDateStamp() {
 }
 
 function equipmentView(data) {
+  const activeItems = data.equipment.filter((item) => item.lifecycleStatus === "active");
+  const lifecycleExceptions = data.equipment.filter((item) => item.lifecycleStatus !== "active");
   return `
     <section class="management-section" data-view-panel="equipment">
       <div class="management-heading">
-        <div><p class="eyebrow">Inventory records</p><h2>Equipment and bundles</h2></div>
+        <div><p class="eyebrow">Operational inventory</p><h2>Active equipment and bundles</h2></div>
         <button class="primary-button" type="button" id="add-equipment">Add equipment</button>
       </div>
       <div class="admin-table-wrap">
         <table class="admin-table">
-          <thead><tr><th>Photo</th><th>Asset</th><th>Equipment</th><th>Category</th><th>Type</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>Photo</th><th>Asset</th><th>Equipment</th><th>Category</th><th>Type</th><th>Availability</th><th></th></tr></thead>
           <tbody>
-            ${data.equipment.map((item) => `
+            ${activeItems.map((item) => `
               <tr>
                 <td><img data-equipment-photo src="${escapeHtml(item.photoUrl || placeholderPhotoUrl)}" alt="" loading="lazy"></td>
                 <td><span class="asset-code">${escapeHtml(item.assetCode)}</span></td>
                 <td><strong>${escapeHtml(item.name)}</strong>${item.model ? `<small>${escapeHtml(item.model)}</small>` : ""}</td>
                 <td>${escapeHtml(item.category)}</td>
                 <td>${escapeHtml(item.itemType === "bundle" ? `Bundle (${item.components.length})` : "Individual")}</td>
-                <td><span class="admin-status status-${escapeHtml(item.lifecycleStatus)}">${escapeHtml(item.lifecycleStatus)}</span></td>
+                <td><span class="admin-status status-${escapeHtml(item.availability)}">${escapeHtml(availabilityLabels[item.availability] || item.availability)}</span></td>
                 <td><button class="secondary-button compact-button" type="button" data-edit-equipment="${escapeHtml(item.assetCode)}">Edit</button></td>
               </tr>
-            `).join("")}
+            `).join("") || `<tr><td colspan="7" class="empty-table-cell">No lifecycle-active equipment records.</td></tr>`}
           </tbody>
         </table>
       </div>
+      <section class="lifecycle-exceptions" aria-labelledby="lifecycle-exceptions-title">
+        <div class="management-heading">
+          <div><p class="eyebrow">Lifecycle exceptions</p><h3 id="lifecycle-exceptions-title">Maintenance, missing and retired</h3></div>
+        </div>
+        ${lifecycleExceptions.length ? `
+          <div class="admin-table-wrap">
+            <table class="admin-table">
+              <thead><tr><th>Asset</th><th>Equipment</th><th>Category</th><th>Lifecycle</th><th></th></tr></thead>
+              <tbody>
+                ${lifecycleExceptions.map((item) => `
+                  <tr>
+                    <td><span class="asset-code">${escapeHtml(item.assetCode)}</span></td>
+                    <td><strong>${escapeHtml(item.name)}</strong>${item.model ? `<small>${escapeHtml(item.model)}</small>` : ""}</td>
+                    <td>${escapeHtml(item.category)}</td>
+                    <td><span class="admin-status status-${escapeHtml(item.lifecycleStatus)}">${escapeHtml(item.lifecycleStatus)}</span></td>
+                    <td><button class="secondary-button compact-button" type="button" data-edit-equipment="${escapeHtml(item.assetCode)}">Edit</button></td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        ` : `<p class="empty-lifecycle-message">No lifecycle exceptions.</p>`}
+      </section>
     </section>
   `;
 }

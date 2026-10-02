@@ -96,12 +96,21 @@
 .admin-table td small { display: block; margin-top: 0.2rem; color: var(--muted); }
 .admin-status { display: inline-flex; padding: 0.3rem 0.5rem; border-radius: 999px; background: var(--image-bg); font-size: 0.72rem; font-weight: 750; text-transform: capitalize; white-space: nowrap; }
 .admin-status.status-active { color: var(--success); background: var(--success-bg); }
+.admin-status.status-free { color: var(--success); background: var(--success-bg); }
+.admin-status.status-reserved { color: var(--reserved); background: var(--reserved-bg); }
+.admin-status.status-in_use { color: var(--use); background: var(--use-bg); }
 .admin-status.status-proposed { color: var(--reserved); background: var(--reserved-bg); }
 .admin-status.status-ordered { color: var(--use); background: var(--use-bg); }
 .admin-status.status-received { color: var(--success); background: var(--success-bg); }
 .admin-status.status-maintenance,
 .admin-status.status-missing,
 .admin-status.status-retired { color: var(--danger); background: var(--danger-bg); }
+.lifecycle-exceptions { margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--line); }
+.lifecycle-exceptions h3 { margin: 0; font-size: clamp(1.25rem, 2.5vw, 1.6rem); }
+.empty-lifecycle-message,
+.empty-table-cell { color: var(--muted); }
+.empty-lifecycle-message { margin: 1rem 0 0; }
+.empty-table-cell { padding-block: 1.25rem !important; text-align: center; }
 .compact-button { min-height: 2.2rem; padding: 0.4rem 0.65rem; font-size: 0.76rem; white-space: nowrap; }
 
 .admin-dialog { width: min(66rem, calc(100% - 2rem)); max-height: calc(100vh - 2rem); padding: 0; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 1rem; box-shadow: var(--dialog-shadow); }
