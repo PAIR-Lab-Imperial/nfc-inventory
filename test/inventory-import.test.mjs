@@ -10,16 +10,18 @@ test("canonical workbook validates and contains the expected seed records", asyn
   assert.deepEqual(report.errors, []);
   assert.deepEqual(report.counts, {
     categories: 13,
-    equipment: 78,
+    equipment: 77,
     components: 30,
     members: 6,
-    files: 34,
+    files: 33,
   });
   assert.deepEqual(report.warnings, []);
   assert.equal(data.equipment.filter((item) => item.name === "Azure Kinect DK").length, 2);
-  assert.equal(data.equipment.filter((item) => item.primaryPhotoUrl).length, 78);
-  assert.equal(data.equipment.filter((item) => !item.primaryPhotoUrl.endsWith("equipment-placeholder.svg")).length, 40);
+  assert.equal(data.equipment.filter((item) => item.primaryPhotoUrl).length, 77);
+  assert.equal(data.equipment.filter((item) => !item.primaryPhotoUrl.endsWith("equipment-placeholder.svg")).length, 55);
   assert.equal(data.components.filter((item) => item.photoUrl).length, 30);
+  assert.equal(data.components.filter((item) => !item.photoUrl.endsWith("equipment-placeholder.svg")).length, 20);
+  assert.equal(data.equipment.some((item) => item.assetCode === "CAM-005"), false);
   assert.equal(data.equipment.filter((item) => item.name === "Reachy Mini Wireless").length, 4);
   assert.equal(data.equipment.filter((item) => item.name === "Reachy Mini Lite").length, 1);
   const rob006 = data.equipment.find((item) => item.assetCode === "ROB-006");
