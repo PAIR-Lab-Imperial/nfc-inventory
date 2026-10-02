@@ -8,6 +8,7 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://pair-lab-nfc-inventory-api.pair-lab-nfc-inventory.workers.dev; img-src 'self' data: https:; style-src 'self'; script-src 'self'; base-uri 'none'; form-action 'self'">
     <title>Administrator · PAIR Lab Equipment</title>
     <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+    <script src="./theme.js"></script>
     <link rel="stylesheet" href="./styles.css">
     <link rel="stylesheet" href="./admin.css">
     <script src="./config.js"></script>
@@ -23,7 +24,13 @@
             <small>Secure inventory access</small>
           </span>
         </a>
-        <span class="admin-badge">Restricted access</span>
+        <div class="header-actions">
+          <span class="admin-badge">Restricted access</span>
+          <button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch to dark mode" title="Switch to dark mode">
+            <span class="theme-toggle-icon" aria-hidden="true"></span>
+            <span data-theme-label>Dark mode</span>
+          </button>
+        </div>
       </div>
     </header>
 
