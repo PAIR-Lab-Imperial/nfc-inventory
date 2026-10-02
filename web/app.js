@@ -100,6 +100,7 @@ function equipmentCard(item) {
 
 function renderCatalogue(data) {
   document.title = "PAIR Lab Equipment";
+  window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   const total = data.items.length;
   const available = data.items.filter((item) => item.availability === "free").length;
   const allocated = data.items.filter((item) => ["reserved", "in_use"].includes(item.availability)).length;
@@ -225,6 +226,7 @@ function availabilityMessage(item) {
 
 function renderDetail(item) {
   document.title = `${item.assetCode} · ${item.name} · PAIR Lab Equipment`;
+  window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   const components = item.components.length
     ? `
       <ul class="component-list">
