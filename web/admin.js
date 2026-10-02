@@ -1,4 +1,5 @@
 import { buildInventoryWorkbook } from "./xlsx-export.js";
+import { matchesAdminFilters } from "./admin-filters.js?v=0.12.0";
 
 const apiBaseUrl = window.NFC_INVENTORY_CONFIG?.apiBaseUrl?.replace(/\/$/, "");
 const storageKey = "pair-lab-admin-session";
@@ -126,6 +127,23 @@ const availabilityLabels = Object.freeze({
   not_unboxed: "Not yet unboxed",
 });
 
+function filterOptions(options) {
+  return options.map(({ value, label }) => `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`).join("");
+}
+
+function adminFilterBar(scope, { placeholder, selects = [] }) {
+  return `
+    <div class="admin-filter-bar" data-admin-filters="${escapeHtml(scope)}">
+      <label class="admin-filter-search"><span>Search</span><input type="search" data-filter-key="search" placeholder="${escapeHtml(placeholder)}" autocomplete="off"></label>
+      ${selects.map((select) => `
+        <label><span>${escapeHtml(select.label)}</span><select data-filter-key="${escapeHtml(select.key)}"><option value="">${escapeHtml(select.allLabel)}</option>${filterOptions(select.options)}</select></label>
+      `).join("")}
+      <button class="secondary-button compact-button admin-filter-clear" type="button" data-filter-clear>Clear filters</button>
+      <p class="admin-filter-count" data-filter-count aria-live="polite"></p>
+    </div>
+  `;
+}
+
 function downloadFile(contents, filename, type) {
   const blob = contents instanceof Blob ? contents : new Blob([contents], { type });
   const url = URL.createObjectURL(blob);
@@ -145,18 +163,27 @@ function exportDateStamp() {
 function equipmentView(data) {
   const activeItems = data.equipment.filter((item) => item.lifecycleStatus === "active");
   const lifecycleExceptions = data.equipment.filter((item) => item.lifecycleStatus !== "active");
+  const categories = [...new Set(activeItems.map((item) => item.category))].sort((left, right) => left.localeCompare(right, "en-GB"));
   return `
     <section class="management-section" data-view-panel="equipment">
       <div class="management-heading">
         <div><p class="eyebrow">Operational inventory</p><h2>Active equipment and bundles</h2></div>
         <button class="primary-button" type="button" id="add-equipment">Add equipment</button>
       </div>
+      ${adminFilterBar("equipment", {
+        placeholder: "Asset code, equipment, model or category",
+        selects: [
+          { label: "Category", key: "category", allLabel: "All categories", options: categories.map((category) => ({ value: category, label: category })) },
+          { label: "Type", key: "type", allLabel: "All types", options: [{ value: "individual", label: "Individual" }, { value: "bundle", label: "Bundle" }] },
+          { label: "Availability", key: "availability", allLabel: "Any availability", options: Object.entries(availabilityLabels).map(([value, label]) => ({ value, label })) },
+        ],
+      })}
       <div class="admin-table-wrap">
         <table class="admin-table">
           <thead><tr><th>Photo</th><th>Asset</th><th>Equipment</th><th>Category</th><th>Type</th><th>Availability</th><th></th></tr></thead>
           <tbody>
             ${activeItems.map((item) => `
-              <tr>
+              <tr data-filter-row="equipment" data-search="${escapeHtml([item.assetCode, item.name, item.manufacturer, item.model, item.category].filter(Boolean).join(" "))}" data-category="${escapeHtml(item.category)}" data-type="${escapeHtml(item.itemType)}" data-availability="${escapeHtml(item.availability)}">
                 <td><img data-equipment-photo src="${escapeHtml(item.photoUrl || placeholderPhotoUrl)}" alt="" loading="lazy"></td>
                 <td><span class="asset-code">${escapeHtml(item.assetCode)}</span></td>
                 <td><strong>${escapeHtml(item.name)}</strong>${item.model ? `<small>${escapeHtml(item.model)}</small>` : ""}</td>
@@ -165,7 +192,8 @@ function equipmentView(data) {
                 <td><span class="admin-status status-${escapeHtml(item.availability)}">${escapeHtml(availabilityLabels[item.availability] || item.availability)}</span>${item.currentUser ? `<small>${escapeHtml(item.currentUser)}${item.availabilityUntil ? ` · until ${escapeHtml(formatDateTime(item.availabilityUntil))}` : ""}</small>` : ""}</td>
                 <td><div class="table-actions"><button class="secondary-button compact-button" type="button" data-edit-availability="${escapeHtml(item.assetCode)}">Availability</button><button class="secondary-button compact-button" type="button" data-edit-equipment="${escapeHtml(item.assetCode)}">Edit record</button></div></td>
               </tr>
-            `).join("") || `<tr><td colspan="7" class="empty-table-cell">No lifecycle-active equipment records.</td></tr>`}
+            `).join("")}
+            <tr data-filter-empty="equipment" ${activeItems.length ? "hidden" : ""}><td colspan="7" class="empty-table-cell">No active equipment matches these filters.</td></tr>
           </tbody>
         </table>
       </div>
@@ -203,12 +231,16 @@ function membersView(data) {
         <div><p class="eyebrow">People</p><h2>Lab members</h2></div>
         <button class="primary-button" type="button" id="add-member">Add member</button>
       </div>
+      ${adminFilterBar("members", {
+        placeholder: "Username, display name or notes",
+        selects: [{ label: "State", key: "state", allLabel: "Any state", options: [{ value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }] }],
+      })}
       <div class="admin-table-wrap">
         <table class="admin-table">
           <thead><tr><th>Username</th><th>Display name</th><th>State</th><th>Notes</th><th></th></tr></thead>
           <tbody>
             ${data.members.map((member) => `
-              <tr>
+              <tr data-filter-row="members" data-search="${escapeHtml([member.username, member.displayName, member.notes].filter(Boolean).join(" "))}" data-state="${member.active ? "active" : "inactive"}">
                 <td><span class="asset-code">${escapeHtml(member.username)}</span></td>
                 <td><strong>${escapeHtml(member.displayName)}</strong></td>
                 <td><span class="admin-status ${member.active ? "status-active" : "status-retired"}">${member.active ? "Active" : "Inactive"}</span></td>
@@ -216,6 +248,7 @@ function membersView(data) {
                 <td><button class="secondary-button compact-button" type="button" data-edit-member="${escapeHtml(member.username)}">Edit</button></td>
               </tr>
             `).join("")}
+            <tr data-filter-empty="members" ${data.members.length ? "hidden" : ""}><td colspan="5" class="empty-table-cell">No members match these filters.</td></tr>
           </tbody>
         </table>
       </div>
@@ -231,6 +264,19 @@ function labelsView(data) {
         <div><p class="eyebrow">NFC associations</p><h2>Active labels</h2></div>
         <p>Stored scan URLs can be viewed, copied and included in the protected operational export.</p>
       </div>
+      ${adminFilterBar("labels", {
+        placeholder: "Asset code, equipment or label hint",
+        selects: [{
+          label: "Programming",
+          key: "programming",
+          allLabel: "Any programming state",
+          options: [
+            { value: "written", label: "Written" },
+            { value: "not_written", label: "Not written" },
+            { value: "no_label", label: "No active label" },
+          ],
+        }],
+      })}
       <div class="admin-table-wrap">
         <table class="admin-table">
           <thead><tr><th>Asset</th><th>Equipment</th><th>Label hint</th><th>Created</th><th>Programming</th><th></th></tr></thead>
@@ -238,7 +284,7 @@ function labelsView(data) {
             ${data.equipment.map((item) => {
               const label = activeLabels.get(item.assetCode);
               return `
-                <tr>
+                <tr data-filter-row="labels" data-search="${escapeHtml([item.assetCode, item.name, item.model, label?.tokenHint].filter(Boolean).join(" "))}" data-programming="${label ? (label.writtenAt ? "written" : "not_written") : "no_label"}">
                   <td><span class="asset-code">${escapeHtml(item.assetCode)}</span></td>
                   <td><strong>${escapeHtml(item.name)}</strong></td>
                   <td>${label ? `…${escapeHtml(label.tokenHint)}` : "No active label"}</td>
@@ -252,6 +298,7 @@ function labelsView(data) {
                 </tr>
               `;
             }).join("")}
+            <tr data-filter-empty="labels" ${data.equipment.length ? "hidden" : ""}><td colspan="6" class="empty-table-cell">No NFC labels match these filters.</td></tr>
           </tbody>
         </table>
       </div>
@@ -266,6 +313,10 @@ function proposalsView(data) {
         <div><p class="eyebrow">Equipment ideas</p><h2>Proposals</h2></div>
         <p>Review member suggestions, select an option, and track it from proposed to received.</p>
       </div>
+      ${adminFilterBar("proposals", {
+        placeholder: "Proposal, requirement, requester or selected option",
+        selects: [{ label: "Status", key: "status", allLabel: "Any status", options: ["proposed", "ordered", "received"].map((status) => ({ value: status, label: status[0].toUpperCase() + status.slice(1) })) }],
+      })}
       <div class="admin-table-wrap">
         <table class="admin-table">
           <thead><tr><th>Proposal</th><th>Requested by</th><th>Options</th><th>Selected</th><th>Status</th><th></th></tr></thead>
@@ -273,7 +324,7 @@ function proposalsView(data) {
             ${data.proposals.length ? data.proposals.map((proposal) => {
               const selected = proposal.options.find((option) => option.id === proposal.selectedOptionId);
               return `
-                <tr>
+                <tr data-filter-row="proposals" data-search="${escapeHtml([proposal.title, proposal.requirement, proposal.requestedBy, selected?.name].filter(Boolean).join(" "))}" data-status="${escapeHtml(proposal.status)}">
                   <td><strong>${escapeHtml(proposal.title)}</strong><small>${escapeHtml(proposal.requirement)}</small></td>
                   <td>${escapeHtml(proposal.requestedBy || "—")}</td>
                   <td>${proposal.options.length}</td>
@@ -282,7 +333,8 @@ function proposalsView(data) {
                   <td><button class="secondary-button compact-button" type="button" data-edit-proposal="${escapeHtml(proposal.id)}">Review</button></td>
                 </tr>
               `;
-            }).join("") : `<tr><td colspan="6">No equipment proposals have been submitted.</td></tr>`}
+            }).join("") : ""}
+            <tr data-filter-empty="proposals" ${data.proposals.length ? "hidden" : ""}><td colspan="6" class="empty-table-cell">No proposals match these filters.</td></tr>
           </tbody>
         </table>
       </div>
@@ -356,6 +408,40 @@ function showView(view) {
   activeView = view;
   document.querySelectorAll("[data-view-panel]").forEach((panel) => { panel.hidden = panel.dataset.viewPanel !== view; });
   document.querySelectorAll("[data-admin-view]").forEach((button) => { button.classList.toggle("active", button.dataset.adminView === view); });
+}
+
+function bindAdminFilters() {
+  document.querySelectorAll("[data-admin-filters]").forEach((filterBar) => {
+    const scope = filterBar.dataset.adminFilters;
+    const panel = filterBar.closest("[data-view-panel]");
+    const rows = [...panel.querySelectorAll(`[data-filter-row="${scope}"]`)];
+    const controls = [...filterBar.querySelectorAll("[data-filter-key]")];
+    const count = filterBar.querySelector("[data-filter-count]");
+    const empty = panel.querySelector(`[data-filter-empty="${scope}"]`);
+    const apply = () => {
+      let visible = 0;
+      for (const row of rows) {
+        const matches = matchesAdminFilters(row.dataset, controls.map((control) => ({
+          key: control.dataset.filterKey,
+          value: control.value,
+          mode: control.type === "search" ? "contains" : "exact",
+        })));
+        row.hidden = !matches;
+        if (matches) visible += 1;
+      }
+      empty.hidden = visible !== 0;
+      count.textContent = `Showing ${visible} of ${rows.length}`;
+    };
+    controls.forEach((control) => {
+      control.addEventListener(control.type === "search" ? "input" : "change", apply);
+    });
+    filterBar.querySelector("[data-filter-clear]").addEventListener("click", () => {
+      controls.forEach((control) => { control.value = ""; });
+      apply();
+      controls[0]?.focus();
+    });
+    apply();
+  });
 }
 
 function field(label, name, value = "", attributes = "") {
@@ -732,6 +818,7 @@ async function submitAdminForm(form, action) {
 }
 
 function bindDashboardEvents() {
+  bindAdminFilters();
   document.querySelector("#admin-logout").addEventListener("click", () => {
     window.sessionStorage.removeItem(storageKey);
     currentData = null;

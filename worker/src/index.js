@@ -1806,7 +1806,7 @@ export default {
         {
           ok: true,
           service: "pair-lab-nfc-inventory-api",
-          version: "0.11.0",
+          version: "0.12.0",
         },
         {},
         allowedOrigin,

@@ -55,6 +55,11 @@ replacement. Equipment and every bundle component can use a separate public phot
 URL. New records default to the maintained placeholder when no reviewed image is
 available.
 
+Each management table has local filters. Equipment can be searched and filtered
+by category, type and live availability; members by active state; NFC labels by
+programming state; and proposals by workflow status. Filters affect only the
+current browser view and do not modify or export a subset of the stored records.
+
 The availability override includes **Not yet unboxed** for equipment that has
 arrived but is not ready for members. This state appears in the public catalogue
 and blocks member reservations and checkout. An administrator changes it to
