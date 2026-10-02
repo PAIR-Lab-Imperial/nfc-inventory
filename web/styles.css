@@ -213,6 +213,13 @@ h2 { letter-spacing: -0.025em; }
   line-height: 1.65;
 }
 
+.hero-actions { margin-top: 1.35rem; }
+.proposal-jump {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
 .catalogue-hero {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(18rem, 0.55fr);
@@ -238,6 +245,9 @@ h2 { letter-spacing: -0.025em; }
 
 .catalogue-panel,
 .proposal-panel { margin-top: clamp(3.5rem, 8vw, 6.5rem); }
+.proposal-panel { scroll-margin-top: 6rem; }
+.proposal-panel:focus { outline: none; }
+.proposal-panel:focus-visible { outline: 3px solid color-mix(in srgb, var(--cyan) 35%, transparent); outline-offset: 0.5rem; }
 
 .panel-heading,
 .section-heading {

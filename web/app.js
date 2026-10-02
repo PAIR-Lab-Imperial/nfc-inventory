@@ -210,6 +210,9 @@ function renderCatalogue(data, proposalData, memberData, { message = "" } = {}) 
         <p class="eyebrow">NFC inventory</p>
         <h1>Find the equipment you need.</h1>
         <p class="hero-copy">Search the PAIR Lab collection, check live availability, and open a complete record for each item or bundle.</p>
+        <div class="hero-actions">
+          <a class="secondary-button proposal-jump" href="#proposals">Propose equipment</a>
+        </div>
       </div>
       <dl class="summary-strip" aria-label="Inventory summary">
         <div><dt>Total</dt><dd>${total}</dd></div>
@@ -260,7 +263,7 @@ function renderCatalogue(data, proposalData, memberData, { message = "" } = {}) 
       </div>
     </section>
 
-    <section class="proposal-panel" aria-labelledby="proposal-title">
+    <section class="proposal-panel" id="proposals" tabindex="-1" aria-labelledby="proposal-title">
       <div class="panel-heading">
         <div><p class="eyebrow">Equipment ideas</p><h2 id="proposal-title">Proposals</h2></div>
         <button class="primary-button" id="open-proposal-dialog" type="button">Propose equipment</button>
