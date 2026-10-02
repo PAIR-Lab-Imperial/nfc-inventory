@@ -598,15 +598,15 @@ async function getEquipment(env, assetCode, origin) {
 
 async function listMembers(env, origin) {
   const result = await env.DB.prepare(`
-    SELECT username, display_name
+    SELECT id, display_name
     FROM members
     WHERE active = 1
-    ORDER BY display_name COLLATE NOCASE, username COLLATE NOCASE
+    ORDER BY display_name COLLATE NOCASE, id
   `).all();
   return json(
     {
       members: result.results.map((member) => ({
-        username: member.username,
+        id: member.id,
         displayName: member.display_name,
       })),
     },
@@ -647,7 +647,7 @@ function proposalInput(body) {
   return {
     title: requiredText(body, "title", 180),
     requirement: requiredText(body, "requirement", 3000),
-    requestedByUsername: validUsername(requiredText(body, "requestedByUsername", 80)),
+    requestedByMemberId: requiredText(body, "requestedByMemberId", 80),
     options,
   };
 }
@@ -714,11 +714,11 @@ async function createProposal(request, env, origin) {
   requireWriteOrigin(request, origin);
   const data = proposalInput(await readJsonBody(request));
   const member = await env.DB.prepare(`
-    SELECT id, username, display_name
+    SELECT id, display_name
     FROM members
-    WHERE username = ?1 COLLATE NOCASE AND active = 1
+    WHERE id = ?1 AND active = 1
     LIMIT 1
-  `).bind(data.requestedByUsername).first();
+  `).bind(data.requestedByMemberId).first();
   if (!member) throw new RequestError("member_not_found", "Active member not found", 404);
   const proposalId = crypto.randomUUID();
   const now = new Date().toISOString();
@@ -1390,7 +1390,20 @@ async function getAdminOperationalExport(request, env, origin) {
   }, {}, origin);
 }
 
-async function findEquipmentAndMember(env, assetCode, username) {
+async function findEquipmentAndMember(env, assetCode, username, memberId = null) {
+  const memberStatement = memberId
+    ? env.DB.prepare(`
+      SELECT id, username, display_name
+      FROM members
+      WHERE username = ?1 COLLATE NOCASE AND id = ?2 AND active = 1
+      LIMIT 1
+    `).bind(username, memberId)
+    : env.DB.prepare(`
+      SELECT id, username, display_name
+      FROM members
+      WHERE username = ?1 COLLATE NOCASE AND active = 1
+      LIMIT 1
+    `).bind(username);
   const [equipmentResult, memberResult] = await env.DB.batch([
     env.DB.prepare(`
       SELECT id, asset_code, name, lifecycle_status
@@ -1398,17 +1411,18 @@ async function findEquipmentAndMember(env, assetCode, username) {
       WHERE asset_code = ?1 COLLATE NOCASE
       LIMIT 1
     `).bind(assetCode),
-    env.DB.prepare(`
-      SELECT id, username, display_name
-      FROM members
-      WHERE username = ?1 COLLATE NOCASE AND active = 1
-      LIMIT 1
-    `).bind(username),
+    memberStatement,
   ]);
   const equipment = equipmentResult.results[0];
   const member = memberResult.results[0];
   if (!equipment) throw new RequestError("equipment_not_found", "Equipment not found", 404);
-  if (!member) throw new RequestError("member_not_found", "Active member username not found", 404);
+  if (!member) {
+    throw new RequestError(
+      "member_not_found",
+      memberId ? "Selected member and username do not match an active member" : "Active member username not found",
+      404,
+    );
+  }
   if (equipment.lifecycle_status !== "active") {
     throw new RequestError("equipment_unavailable", `Equipment is marked as ${equipment.lifecycle_status}`, 409);
   }
@@ -1418,6 +1432,7 @@ async function findEquipmentAndMember(env, assetCode, username) {
 async function createReservation(request, env, assetCode, origin) {
   requireWriteOrigin(request, origin);
   const body = await readJsonBody(request);
+  const memberId = requiredText(body, "memberId", 80);
   const username = requiredText(body, "username", 80);
   const startsAt = timestamp(body, "startsAt", { required: true });
   const endsAt = timestamp(body, "endsAt");
@@ -1429,7 +1444,7 @@ async function createReservation(request, env, assetCode, origin) {
   }
   const canShare = body.canShare === true ? 1 : 0;
   const sharingNotes = optionalText(body, "sharingNotes");
-  const { equipment, member } = await findEquipmentAndMember(env, assetCode, username);
+  const { equipment, member } = await findEquipmentAndMember(env, assetCode, username, memberId);
   const reservationId = crypto.randomUUID();
   const auditId = crypto.randomUUID();
   const now = new Date().toISOString();
@@ -1590,7 +1605,7 @@ export default {
         {
           ok: true,
           service: "pair-lab-nfc-inventory-api",
-          version: "0.7.0",
+          version: "0.8.0",
         },
         {},
         allowedOrigin,

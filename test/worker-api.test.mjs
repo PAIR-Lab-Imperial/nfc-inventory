@@ -42,7 +42,7 @@ class MutationStatement extends FakeStatement {
 
   async all() {
     if (this.query.includes("FROM members")) {
-      return { results: this.state.members.map(({ username, display_name }) => ({ username, display_name })) };
+      return { results: this.state.members.map(({ id, display_name }) => ({ id, display_name })) };
     }
     return { results: [] };
   }
@@ -62,7 +62,7 @@ class MutationStatement extends FakeStatement {
     if (this.query.includes("FROM proposal_options")) return this.state.proposalOptionRecord;
     if (this.query.includes("FROM proposals")) return this.state.proposalRecord;
     if (this.query.includes("FROM equipment")) return this.state.equipmentRecord;
-    if (this.query.includes("FROM members") && this.query.includes("WHERE username")) return this.state.memberRecord;
+    if (this.query.includes("FROM members") && (this.query.includes("WHERE username") || this.query.includes("WHERE id"))) return this.state.memberRecord;
     return null;
   }
 
@@ -170,9 +170,15 @@ function mutationEnvironment({ openCheckout = null, currentCheckout = null, nfcL
           ];
         }
         if (statements[0]?.query.includes("SELECT id, asset_code, name, lifecycle_status")) {
+          const memberStatement = statements[1];
+          const memberResults = state.members.filter((member) => {
+            const usernameMatches = member.username.toLocaleLowerCase("en-GB") === String(memberStatement.parameters[0]).toLocaleLowerCase("en-GB");
+            const idMatches = !memberStatement.query.includes("id = ?2") || member.id === memberStatement.parameters[1];
+            return usernameMatches && idMatches;
+          });
           return [
             { results: [{ id: "equipment-1", asset_code: "ROB-003", name: "Reachy Mini Wireless", lifecycle_status: "active" }] },
-            { results: state.members },
+            { results: memberResults },
           ];
         }
         state.writes.push(statements);
@@ -299,11 +305,11 @@ test("invalid filters and unknown equipment use stable error responses", async (
   assert.equal((await missingResponse.json()).error.code, "equipment_not_found");
 });
 
-test("active members are listed for the reservation selector", async () => {
+test("active members are listed without exposing usernames", async () => {
   const { environment } = mutationEnvironment();
   const response = await worker.fetch(new Request("https://api.example/api/v1/members"), environment);
   assert.equal(response.status, 200);
-  assert.deepEqual((await response.json()).members, [{ username: "ranul", displayName: "Ranul" }]);
+  assert.deepEqual((await response.json()).members, [{ id: "member-1", displayName: "Ranul" }]);
 });
 
 test("active NFC labels resolve by hash without exposing the raw token", async () => {
@@ -343,6 +349,7 @@ test("reservation creation accepts overlapping advisory bookings and audits the 
   const { environment, state } = mutationEnvironment();
   const response = await worker.fetch(
     postRequest("/api/v1/equipment/ROB-003/reservations", {
+      memberId: "member-1",
       username: "ranul",
       startsAt: "2026-10-03T09:00:00.000Z",
       endsAt: "2026-10-04T17:00:00.000Z",
@@ -359,6 +366,23 @@ test("reservation creation accepts overlapping advisory bookings and audits the 
   assert.equal(state.writes.length, 1);
   assert.match(state.writes[0][0].query, /INSERT INTO reservations/);
   assert.match(state.writes[0][1].query, /INSERT INTO audit_events/);
+});
+
+test("reservation confirmation rejects a username that does not match the selected display name", async () => {
+  const { environment } = mutationEnvironment();
+  const response = await worker.fetch(
+    postRequest("/api/v1/equipment/ROB-003/reservations", {
+      memberId: "member-1",
+      username: "someone-else",
+      startsAt: "2026-10-03T09:00:00.000Z",
+      endsAt: "2026-10-04T17:00:00.000Z",
+    }),
+    environment,
+  );
+  assert.equal(response.status, 404);
+  const body = await response.json();
+  assert.equal(body.error.code, "member_not_found");
+  assert.match(body.error.message, /do not match/);
 });
 
 test("checkout creates one open checkout and rejects an existing one", async () => {
@@ -522,7 +546,7 @@ test("public proposal routes list and create equipment suggestions", async () =>
 
   const createResponse = await worker.fetch(
     postRequest("/api/v1/proposals", {
-      requestedByUsername: "ranul",
+      requestedByMemberId: "member-1",
       title: "New camera",
       requirement: "Portable depth sensing",
       options: [

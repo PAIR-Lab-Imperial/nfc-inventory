@@ -276,7 +276,7 @@ function renderCatalogue(data, proposalData, memberData, { message = "" } = {}) 
           <button class="icon-button" type="button" data-close-proposal-dialog aria-label="Close">×</button>
         </div>
         <div class="dialog-fields">
-          <label><span>Lab member</span><select name="requestedByUsername" required><option value="">Select your name</option>${memberData.members.map((member) => `<option value="${escapeHtml(member.username)}">${escapeHtml(member.displayName)} (${escapeHtml(member.username)})</option>`).join("")}</select></label>
+          <label><span>Lab member</span><select name="requestedByMemberId" required><option value="">Select your name</option>${memberData.members.map((member) => `<option value="${escapeHtml(member.id)}">${escapeHtml(member.displayName)}</option>`).join("")}</select></label>
           <label><span>Proposal title</span><input name="title" maxlength="180" required placeholder="For example: Mobile depth camera"></label>
           <label><span>Requirement</span><textarea name="requirement" maxlength="3000" rows="4" required placeholder="What capability is needed, where it will be used, and any important constraints"></textarea></label>
           <div class="proposal-options-heading"><div><p class="eyebrow">Choices</p><h3>Equipment options</h3></div><button class="secondary-button" id="add-proposal-option" type="button">Add option</button></div>
@@ -380,7 +380,7 @@ function renderCatalogue(data, proposalData, memberData, { message = "" } = {}) 
     proposalError.hidden = true;
     try {
       await postJson("/api/v1/proposals", {
-        requestedByUsername: formData.get("requestedByUsername"),
+        requestedByMemberId: formData.get("requestedByMemberId"),
         title: formData.get("title"),
         requirement: formData.get("requirement"),
         options,
@@ -421,13 +421,14 @@ function actionDialogMarkup(kind, item, members) {
   const now = new Date();
   const tomorrow = new Date(now.valueOf() + 24 * 60 * 60 * 1000);
   const memberOptions = members
-    .map((member) => `<option value="${escapeHtml(member.username)}">${escapeHtml(member.displayName)} (${escapeHtml(member.username)})</option>`)
+    .map((member) => `<option value="${escapeHtml(member.id)}">${escapeHtml(member.displayName)}</option>`)
     .join("");
 
   if (kind === "reserve") {
     return `
       <p class="dialog-intro">Reserve <strong>${escapeHtml(item.assetCode)}</strong>. Reservations are advisory and may overlap.</p>
-      <label><span>Lab member</span><select name="username" required><option value="">Select your name</option>${memberOptions}</select></label>
+      <label><span>Lab member</span><select name="memberId" required><option value="">Select your name</option>${memberOptions}</select></label>
+      <label><span>Confirm with your username</span><input name="username" type="text" maxlength="80" autocomplete="username" required placeholder="Your username"></label>
       <div class="field-pair">
         <label><span>Start</span><input name="startsAt" type="datetime-local" value="${localDateTimeValue(now)}" required></label>
         <label><span>Tentative end</span><input name="endsAt" type="datetime-local" value="${localDateTimeValue(tomorrow)}" required></label>
@@ -624,6 +625,7 @@ function renderDetail(item, members, { message = "" } = {}) {
     const data = new FormData(form);
     const payloads = {
       reserve: {
+        memberId: data.get("memberId"),
         username: data.get("username"),
         startsAt: isoDateTime(data.get("startsAt")),
         endsAt: isoDateTime(data.get("endsAt")),
