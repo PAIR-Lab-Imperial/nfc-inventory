@@ -46,7 +46,9 @@ the same unit, because the current holder must be unambiguous.
 ## Security and privacy
 
 - Member accounts are not required; active members select or enter their username.
-- Public forms are rate-limited and validated in the Worker.
+  This identifies the actor for coordination and audit history but is not strong
+  authentication.
+- Public forms are origin-checked, size-limited and validated in the Worker.
 - Administrator routes will be protected independently from the GitHub Pages site.
 - Administrator-only files are served through short-lived authorized responses.
 - Every administrator mutation and relevant public action creates an audit event.

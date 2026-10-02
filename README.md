@@ -35,7 +35,7 @@ docs/                   Architecture and deployment documentation
 - [x] Validated workbook importer and initial production inventory seed
 - [x] Public equipment catalogue and item record pages
 - [ ] NFC token resolution and label management
-- [ ] Reservations and equipment check-in/out
+- [x] Member reservations and equipment checkout/return
 - [ ] Administrator authentication and dashboard
 - [ ] Proposal workflow, exports and automated backups
 - [ ] NFC label generation and rollout

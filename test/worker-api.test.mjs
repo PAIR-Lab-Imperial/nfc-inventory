@@ -33,6 +33,64 @@ class FakeStatement {
   }
 }
 
+class MutationStatement extends FakeStatement {
+  constructor(query, state) {
+    super(query);
+    this.state = state;
+  }
+
+  async all() {
+    if (this.query.includes("FROM members")) {
+      return { results: this.state.members.map(({ username, display_name }) => ({ username, display_name })) };
+    }
+    return { results: [] };
+  }
+
+  async first() {
+    if (this.query.includes("JOIN equipment ON equipment.id = checkout.equipment_id")) {
+      return this.state.currentCheckout;
+    }
+    if (this.query.includes("FROM checkouts")) return this.state.openCheckout;
+    return null;
+  }
+}
+
+function mutationEnvironment({ openCheckout = null, currentCheckout = null } = {}) {
+  const state = {
+    openCheckout,
+    currentCheckout,
+    members: [{ id: "member-1", username: "ranul", display_name: "Ranul" }],
+    writes: [],
+  };
+  const environment = {
+    ALLOWED_ORIGIN: "https://pair-lab-imperial.github.io",
+    DB: {
+      prepare(query) {
+        return new MutationStatement(query, state);
+      },
+      async batch(statements) {
+        if (statements[0]?.query.includes("SELECT id, asset_code, name, lifecycle_status")) {
+          return [
+            { results: [{ id: "equipment-1", asset_code: "ROB-003", name: "Reachy Mini Wireless", lifecycle_status: "active" }] },
+            { results: state.members },
+          ];
+        }
+        state.writes.push(statements);
+        return statements.map(() => ({ success: true }));
+      },
+    },
+  };
+  return { environment, state };
+}
+
+function postRequest(path, body, origin = "https://pair-lab-imperial.github.io") {
+  return new Request(`https://api.example${path}`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin },
+    body: JSON.stringify(body),
+  });
+}
+
 function fakeEnvironment({ found = true } = {}) {
   return {
     ALLOWED_ORIGIN: "https://pair-lab-imperial.github.io",
@@ -128,4 +186,97 @@ test("invalid filters and unknown equipment use stable error responses", async (
   );
   assert.equal(missingResponse.status, 404);
   assert.equal((await missingResponse.json()).error.code, "equipment_not_found");
+});
+
+test("active members are listed for the reservation selector", async () => {
+  const { environment } = mutationEnvironment();
+  const response = await worker.fetch(new Request("https://api.example/api/v1/members"), environment);
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).members, [{ username: "ranul", displayName: "Ranul" }]);
+});
+
+test("reservation creation accepts overlapping advisory bookings and audits the write", async () => {
+  const { environment, state } = mutationEnvironment();
+  const response = await worker.fetch(
+    postRequest("/api/v1/equipment/ROB-003/reservations", {
+      username: "ranul",
+      startsAt: "2026-10-03T09:00:00.000Z",
+      endsAt: "2026-10-04T17:00:00.000Z",
+      canShare: true,
+      sharingNotes: "Ask first",
+    }),
+    environment,
+  );
+  assert.equal(response.status, 201);
+  const { reservation } = await response.json();
+  assert.equal(reservation.assetCode, "ROB-003");
+  assert.equal(reservation.memberName, "Ranul");
+  assert.equal(reservation.canShare, true);
+  assert.equal(state.writes.length, 1);
+  assert.match(state.writes[0][0].query, /INSERT INTO reservations/);
+  assert.match(state.writes[0][1].query, /INSERT INTO audit_events/);
+});
+
+test("checkout creates one open checkout and rejects an existing one", async () => {
+  const first = mutationEnvironment();
+  const response = await worker.fetch(
+    postRequest("/api/v1/equipment/ROB-003/checkouts", {
+      username: "ranul",
+      expectedReturnAt: "2099-10-04T17:00:00.000Z",
+      checkoutNotes: "Bench test",
+    }),
+    first.environment,
+  );
+  assert.equal(response.status, 201);
+  assert.match(first.state.writes[0][0].query, /INSERT INTO checkouts/);
+
+  const existing = mutationEnvironment({ openCheckout: { id: "checkout-open" } });
+  const conflict = await worker.fetch(
+    postRequest("/api/v1/equipment/ROB-003/checkouts", { username: "ranul" }),
+    existing.environment,
+  );
+  assert.equal(conflict.status, 409);
+  assert.equal((await conflict.json()).error.code, "already_checked_out");
+});
+
+test("return requires the current holder username", async () => {
+  const { environment, state } = mutationEnvironment({
+    currentCheckout: {
+      id: "checkout-1",
+      equipment_id: "equipment-1",
+      checked_out_at: "2026-10-02T09:00:00.000Z",
+      member_id: "member-1",
+      username: "ranul",
+      display_name: "Ranul",
+      asset_code: "ROB-003",
+    },
+  });
+  const mismatch = await worker.fetch(
+    postRequest("/api/v1/equipment/ROB-003/return", { username: "someone-else" }),
+    environment,
+  );
+  assert.equal(mismatch.status, 409);
+  assert.equal((await mismatch.json()).error.code, "username_mismatch");
+
+  const returned = await worker.fetch(
+    postRequest("/api/v1/equipment/ROB-003/return", { username: "RANUL", returnNotes: "Complete" }),
+    environment,
+  );
+  assert.equal(returned.status, 200);
+  assert.equal((await returned.json()).checkout.returnNotes, "Complete");
+  assert.match(state.writes[0][0].query, /UPDATE checkouts/);
+});
+
+test("write routes reject a different browser origin", async () => {
+  const { environment } = mutationEnvironment();
+  const response = await worker.fetch(
+    postRequest(
+      "/api/v1/equipment/ROB-003/reservations",
+      { username: "ranul", startsAt: "2026-10-03T09:00:00.000Z" },
+      "https://malicious.example",
+    ),
+    environment,
+  );
+  assert.equal(response.status, 403);
+  assert.equal((await response.json()).error.code, "origin_not_allowed");
 });

@@ -1,8 +1,8 @@
 # Public API
 
-The Worker exposes read-only public catalogue routes under `/api/v1`. Responses
-use JSON, disable caching so availability is not shown stale, and allow browser
-requests from the PAIR Lab GitHub Pages origin.
+The Worker exposes public catalogue and member-action routes under `/api/v1`.
+Responses use JSON, disable caching so availability is not shown stale, and
+allow browser requests from the PAIR Lab GitHub Pages origin.
 
 ## List equipment
 
@@ -31,3 +31,67 @@ file records.
 The browser uses `?item={asset-code}` for a shareable item page. NFC labels will
 later use a random token rather than exposing the asset code as the label
 credential.
+
+## Active members
+
+`GET /api/v1/members`
+
+Returns active member usernames and display names for the reservation selector.
+This information is intentionally public in the current lab workflow and must
+not contain email addresses or other contact details.
+
+## Reserve equipment
+
+`POST /api/v1/equipment/{asset-code}/reservations`
+
+```json
+{
+  "username": "ranul",
+  "startsAt": "2026-10-03T09:00:00.000Z",
+  "endsAt": "2026-10-04T17:00:00.000Z",
+  "canShare": true,
+  "sharingNotes": "Ask first"
+}
+```
+
+The username must identify an active member. Reservations are advisory and may
+overlap; they do not prevent another member from reserving or checking out the
+same equipment. `endsAt` and the sharing note are optional at the API boundary.
+
+## Check out equipment
+
+`POST /api/v1/equipment/{asset-code}/checkouts`
+
+```json
+{
+  "username": "ranul",
+  "expectedReturnAt": "2026-10-04T17:00:00.000Z",
+  "checkoutNotes": "Bench test"
+}
+```
+
+The typed username must identify an active member. Only one checkout may remain
+open for an equipment record or bundle. A checkout is allowed despite advisory
+reservations; members should use the visible sharing information to coordinate.
+
+## Return equipment
+
+`POST /api/v1/equipment/{asset-code}/return`
+
+```json
+{
+  "username": "ranul",
+  "returnNotes": "Returned complete"
+}
+```
+
+The typed username must match the holder of the open checkout. The comparison is
+case-insensitive. All three member actions create an audit event.
+
+## Member-action security boundary
+
+These forms provide identification and typo/conflict prevention, not account
+authentication. Browser writes are accepted only from the configured GitHub
+Pages origin, payloads are size-limited and validated, and inactive equipment
+cannot be reserved or checked out. Origin checks are not a substitute for
+authentication; stronger controls can be added later if the workflow changes.

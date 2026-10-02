@@ -8,13 +8,18 @@ if (!baseUrl) {
 const checks = [
   {
     path: "/health",
-    validate: (body) => body.ok === true && body.version === "0.2.0",
+    validate: (body) => body.ok === true && body.version === "0.3.0",
     summarize: (body) => ({ ok: body.ok, version: body.version }),
   },
   {
     path: "/api/v1",
     validate: (body) => body.status === "catalogue",
     summarize: (body) => ({ status: body.status }),
+  },
+  {
+    path: "/api/v1/members",
+    validate: (body) => Array.isArray(body.members) && body.members.length === 6,
+    summarize: (body) => ({ members: body.members?.length }),
   },
   {
     path: "/api/v1/equipment",

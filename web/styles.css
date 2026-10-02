@@ -38,7 +38,8 @@ body {
 
 button,
 input,
-select { font: inherit; }
+select,
+textarea { font: inherit; }
 
 a { color: inherit; }
 
@@ -330,6 +331,8 @@ h2 { letter-spacing: -0.025em; }
 
 .primary-button { color: white; background: var(--navy); border: 1px solid var(--navy); }
 .secondary-button { color: var(--navy); background: white; border: 1px solid var(--line-strong); }
+.primary-button:disabled,
+.secondary-button:disabled { opacity: 0.6; cursor: wait; }
 
 .back-link {
   display: inline-flex;
@@ -382,6 +385,16 @@ h2 { letter-spacing: -0.025em; }
 .detail-main,
 .detail-sidebar { display: grid; gap: 1rem; }
 
+.action-confirmation {
+  margin-top: 1.2rem;
+  padding: 0.85rem 1rem;
+  color: var(--success);
+  background: var(--success-bg);
+  border: 1px solid #b8dfd0;
+  border-radius: 0.75rem;
+  font-weight: 750;
+}
+
 .detail-section,
 .permalink-card {
   padding: clamp(1.25rem, 3vw, 1.8rem);
@@ -417,6 +430,66 @@ h2 { letter-spacing: -0.025em; }
 .reservation-list .reservation-note { grid-column: 1 / -1; padding-top: 0.6rem; border-top: 1px solid var(--line); }
 .muted-copy { margin: 1.2rem 0 0; color: var(--muted); line-height: 1.55; }
 
+.action-section > p,
+.unavailable-action > p { margin: 1rem 0 0; color: var(--muted); font-size: 0.86rem; line-height: 1.55; }
+.action-buttons { margin-top: 1rem; display: grid; gap: 0.65rem; }
+
+.action-dialog {
+  width: min(36rem, calc(100% - 2rem));
+  max-height: calc(100vh - 2rem);
+  padding: 0;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  box-shadow: 0 24px 80px rgb(8 42 70 / 25%);
+}
+.action-dialog::backdrop { background: rgb(8 42 70 / 55%); backdrop-filter: blur(3px); }
+.action-dialog form { padding: clamp(1.25rem, 4vw, 2rem); }
+.dialog-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.dialog-heading h2 { margin: 0; font-size: 1.75rem; }
+.icon-button {
+  width: 2.4rem;
+  height: 2.4rem;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  color: var(--muted);
+  background: #f5f8fa;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.dialog-intro { margin: 0; color: var(--muted); line-height: 1.55; }
+.dialog-fields { margin-top: 1.2rem; display: grid; gap: 1rem; }
+.dialog-fields label:not(.check-field) { display: grid; gap: 0.4rem; }
+.dialog-fields label > span { color: var(--ink); font-size: 0.8rem; font-weight: 750; }
+.dialog-fields label small { color: var(--muted); font-weight: 600; }
+.dialog-fields input,
+.dialog-fields select,
+.dialog-fields textarea {
+  width: 100%;
+  padding: 0.7rem 0.78rem;
+  color: var(--ink);
+  background: #fbfcfd;
+  border: 1px solid var(--line-strong);
+  border-radius: 0.65rem;
+  outline: none;
+}
+.dialog-fields input,
+.dialog-fields select { min-height: 2.9rem; }
+.dialog-fields textarea { resize: vertical; }
+.dialog-fields input:focus,
+.dialog-fields select:focus,
+.dialog-fields textarea:focus { border-color: var(--cyan); box-shadow: 0 0 0 3px rgb(0 127 158 / 14%); }
+.field-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.8rem; }
+.check-field { display: grid; grid-template-columns: auto 1fr; align-items: start; gap: 0.65rem; }
+.check-field input { width: 1.1rem; min-height: auto; height: 1.1rem; margin-top: 0.08rem; }
+.form-error { margin: 1rem 0 0; padding: 0.75rem; color: var(--danger); background: var(--danger-bg); border-radius: 0.65rem; font-size: 0.84rem; }
+.dialog-actions { margin-top: 1.4rem; display: flex; justify-content: flex-end; gap: 0.65rem; }
+
 .permalink-card h2 { margin-bottom: 0.5rem; font-size: 1.1rem; }
 .permalink-card p { color: var(--muted); font-size: 0.86rem; line-height: 1.5; }
 
@@ -440,6 +513,9 @@ footer { border-top: 1px solid var(--line); }
   .equipment-card { min-height: 19rem; }
   .detail-list { grid-template-columns: 1fr; }
   .detail-list div:nth-child(even) { padding-left: 0; border-left: 0; }
+  .field-pair { grid-template-columns: 1fr; }
+  .dialog-actions { display: grid; }
+  .dialog-actions .primary-button { grid-row: 1; }
   .footer-inner { display: grid; }
 }
 

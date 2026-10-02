@@ -3,6 +3,7 @@ node_modules/
 .runtime/
 outputs/
 .wrangler/
+.wrangler-test/
 .dev.vars
 .env
 .env.*
