@@ -20,12 +20,9 @@
 
     document.querySelectorAll("[data-theme-toggle]").forEach((button) => {
       const nextTheme = isDark ? "light" : "dark";
-      const label = `${nextTheme[0].toUpperCase()}${nextTheme.slice(1)} mode`;
-      button.setAttribute("aria-label", `Switch to ${nextTheme} mode`);
-      button.setAttribute("title", `Switch to ${nextTheme} mode`);
-      button.setAttribute("aria-pressed", String(isDark));
-      const labelElement = button.querySelector("[data-theme-label]");
-      if (labelElement) labelElement.textContent = label;
+      button.setAttribute("aria-label", `Use ${nextTheme} mode`);
+      button.setAttribute("title", `Use ${nextTheme} mode`);
+      button.removeAttribute("aria-pressed");
     });
   }
 

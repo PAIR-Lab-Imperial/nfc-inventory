@@ -21,8 +21,9 @@ test("canonical workbook validates and contains the expected seed records", asyn
     "AUD-002 is a Bundle but has no rows in Bundle contents",
   ]);
   assert.equal(data.equipment.filter((item) => item.name === "Azure Kinect DK").length, 2);
-  assert.match(data.equipment[0].primaryPhotoUrl, /equipment-placeholder\.svg$/);
-  assert.match(data.components[0].photoUrl, /equipment-placeholder\.svg$/);
+  assert.equal(data.equipment.filter((item) => !item.primaryPhotoUrl.endsWith("equipment-placeholder.svg")).length, 17);
+  assert.match(data.equipment[0].primaryPhotoUrl, /assets\/equipment\/misty-ii\.png$/);
+  assert.match(data.components[0].photoUrl, /assets\/equipment\/reachy-mini-wireless\.png$/);
 });
 
 test("generated SQL is upsert-only and escapes apostrophes", async () => {

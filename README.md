@@ -38,7 +38,7 @@ docs/                   Architecture and deployment documentation
 - [x] Member reservations and equipment checkout/return
 - [x] Password-protected administrator authentication and overview dashboard
 - [x] Administrator equipment, bundle, member and NFC-label management
-- [x] Public equipment and bundle-component photos with maintained placeholders
+- [x] Public equipment and bundle-component photos, with source records and maintained placeholders where the model is ambiguous
 - [ ] Proposal workflow, exports and automated backups
 - [ ] NFC label generation and rollout
 
