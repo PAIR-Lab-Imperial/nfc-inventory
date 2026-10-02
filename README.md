@@ -33,7 +33,8 @@ docs/                   Architecture and deployment documentation
 - [x] Static site and Worker API scaffolds
 - [x] Production D1 database and Worker foundation deployed
 - [x] Validated workbook importer and initial production inventory seed
-- [ ] Public catalogue and NFC item pages
+- [x] Public equipment catalogue and item record pages
+- [ ] NFC token resolution and label management
 - [ ] Reservations and equipment check-in/out
 - [ ] Administrator authentication and dashboard
 - [ ] Proposal workflow, exports and automated backups
@@ -59,9 +60,16 @@ Production foundation:
 - Web: <https://pair-lab-imperial.github.io/nfc-inventory/>
 - API: <https://pair-lab-nfc-inventory-api.pair-lab-nfc-inventory.workers.dev/>
 
+Public catalogue routes:
+
+- Catalogue: `/api/v1/equipment`
+- Equipment record: `/api/v1/equipment/{asset-code}`
+- Browser item page: `?item={asset-code}`
+
 See [docs/architecture.md](docs/architecture.md),
 [docs/data-model.md](docs/data-model.md), and
 [docs/importing.md](docs/importing.md) before changing inventory data. See
+[docs/api.md](docs/api.md) for the public API and
 [docs/deployment.md](docs/deployment.md) for production setup.
 
 ## Data handling

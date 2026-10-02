@@ -54,3 +54,11 @@ the same unit, because the current holder must be unambiguous.
 
 The final administrator-authentication mechanism will be recorded in a separate
 architecture decision before the admin interface is implemented.
+
+## Public catalogue boundary
+
+The public API returns only fields required to identify equipment, understand
+its specifications and location, and see current use or reservations. It does
+not return administrator notes, purchase prices, supplier details, serial
+numbers, receipts, certificates or controlled file records. The browser performs
+client-side catalogue filtering after one bounded read of at most 100 items.
