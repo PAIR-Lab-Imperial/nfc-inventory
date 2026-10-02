@@ -43,7 +43,8 @@ docs/                   Architecture and deployment documentation
 - [x] Round-trip inventory workbook and protected operational exports
 - [x] Guarded Worker deployment and encrypted weekly backup workflows
 - [ ] Add the GitHub repository secrets and verify the first scheduled backup
-- [ ] NFC label generation and rollout
+- [x] Printable NFC/QR pilot label sheets, programming checklist and NTAG213 capacity validation
+- [ ] Program and scan-test the physical pilot batch before wider rollout
 
 ## Local development
 

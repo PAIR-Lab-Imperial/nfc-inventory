@@ -28,11 +28,49 @@ The command creates two ignored local files:
 Dummy tokens are suitable for interface and scanning tests. Do not permanently
 lock a physical tag containing one; generate a random replacement first.
 
+## Generate the pilot rollout pack
+
+After the canonical workbook is current, generate the printable labels and the
+per-item programming checklist:
+
+```bash
+npm run nfc:build-rollout-pack
+```
+
+The command validates that every encoded URL fits the 144-byte NTAG213 user
+memory and creates two ignored local files under `outputs/nfc-rollout-pack/`:
+
+- `nfc-label-sheet.html`: A4 cut-line labels containing the asset code, equipment
+  name and a QR fallback for the same URL stored on the NFC tag;
+- `nfc-rollout-checklist.csv`: programming, placement and Android/iPhone/QR test
+  fields for every item.
+
+Open the HTML file in a browser and print at **100% scale**. The pilot labels are
+explicitly marked **KEEP REWRITABLE** because they still use dummy identifiers.
+Generated rollout files contain working tag URLs and must not be committed.
+
+Start with two pilot items: one metal-mounted and one non-metal-mounted. Complete
+every test column in the checklist before programming the rest of the inventory.
+After the pilot remains reliable for several days, generate random production
+associations from the administrator interface and download the protected
+operational JSON export. Build a production pack from those stored scan URLs:
+
+```bash
+npm run nfc:build-rollout-pack -- \
+  --operational-export "PAIR-Lab-Operations-YYYY-MM-DD.json" \
+  --output-dir outputs/nfc-production-pack
+```
+
+The production labels omit the pilot warning. Reprogram each tag, replace its QR
+label, and repeat both phone tests. The operational export and generated pack are
+controlled files: keep them out of the repository and delete working copies from
+shared computers after the rollout is recorded.
+
 ## Writing an NTAG213 sticker with a phone
 
 Use an NFC-writing app that supports NDEF URL records, such as NFC Tools:
 
-1. Find the equipment row in `outputs/dummy-nfc-labels.csv`.
+1. Find the equipment row in `outputs/nfc-rollout-pack/nfc-rollout-checklist.csv`.
 2. In the app, choose **Write**, add a **URL/URI** record, and paste only that
    row's `nfc_url` value.
 3. Hold the phone over the sticker until the app confirms the write.
