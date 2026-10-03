@@ -144,12 +144,37 @@ function mutationEnvironment({ openCheckout = null, currentCheckout = null, nfcL
     operationalCheckouts: [],
     operationalAudit: [],
     operationalBackups: [],
+    images: new Map(),
     writes: [],
   };
   const environment = {
     ALLOWED_ORIGIN: "https://pair-lab-imperial.github.io",
     ADMIN_USERNAME: "test-admin",
     ADMIN_PASSWORD: "test-password-long-enough",
+    IMAGES: {
+      async put(key, value, options = {}) {
+        state.images.set(key, {
+          body: value instanceof ArrayBuffer ? new Uint8Array(value) : value,
+          httpMetadata: options.httpMetadata || {},
+          customMetadata: options.customMetadata || {},
+        });
+      },
+      async get(key) {
+        const stored = state.images.get(key);
+        if (!stored) return null;
+        return {
+          body: stored.body,
+          httpMetadata: stored.httpMetadata,
+          httpEtag: '"test-etag"',
+          writeHttpMetadata(headers) {
+            if (stored.httpMetadata.contentType) headers.set("content-type", stored.httpMetadata.contentType);
+          },
+        };
+      },
+      async delete(key) {
+        state.images.delete(key);
+      },
+    },
     DB: {
       prepare(query) {
         return new MutationStatement(query, state);
@@ -574,6 +599,65 @@ test("administrator data includes equipment photos, bundle photos, members and N
   assert.equal(body.labels[0].writtenBy, "test-admin");
   assert.equal(body.equipment[0].files[0].kind, "manual");
   assert.equal(body.proposals[0].options[0].name, "Camera A");
+});
+
+test("administrator can upload a validated equipment image and retrieve it publicly", async () => {
+  const { environment, state } = mutationEnvironment();
+  const token = await loginAdmin(environment);
+  const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
+  const form = new FormData();
+  form.set("assetCode", "ROB-003");
+  form.set("file", new Blob([png], { type: "image/png" }), "reachy.png");
+  const response = await worker.fetch(new Request("https://api.example/api/v1/admin/images", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${token}`,
+      origin: "https://pair-lab-imperial.github.io",
+    },
+    body: form,
+  }), environment);
+  assert.equal(response.status, 201);
+  const body = await response.json();
+  assert.match(body.image.url, /^https:\/\/api\.example\/api\/v1\/images\/equipment\/rob-003\/[a-f0-9-]+\.png$/);
+  assert.equal(body.image.contentType, "image/png");
+  assert.equal(state.images.size, 1);
+  assert.match(state.runs.at(-1).query, /equipment_image\.uploaded/);
+
+  const imageResponse = await worker.fetch(new Request(body.image.url), environment);
+  assert.equal(imageResponse.status, 200);
+  assert.equal(imageResponse.headers.get("content-type"), "image/png");
+  assert.equal(imageResponse.headers.get("cache-control"), "public, max-age=31536000, immutable");
+  assert.deepEqual(new Uint8Array(await imageResponse.arrayBuffer()), png);
+});
+
+test("image uploads reject unsupported content and unavailable storage", async () => {
+  const first = mutationEnvironment();
+  const token = await loginAdmin(first.environment);
+  const unsupported = new FormData();
+  unsupported.set("assetCode", "ROB-003");
+  unsupported.set("file", new Blob(["<svg></svg>"], { type: "image/svg+xml" }), "unsafe.svg");
+  const rejected = await worker.fetch(new Request("https://api.example/api/v1/admin/images", {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, origin: "https://pair-lab-imperial.github.io" },
+    body: unsupported,
+  }), first.environment);
+  assert.equal(rejected.status, 400);
+  assert.equal((await rejected.json()).error.code, "unsupported_image_type");
+  assert.equal(first.state.images.size, 0);
+
+  const unavailable = mutationEnvironment();
+  delete unavailable.environment.IMAGES;
+  const unavailableToken = await loginAdmin(unavailable.environment);
+  const form = new FormData();
+  form.set("assetCode", "ROB-003");
+  form.set("file", new Blob([new Uint8Array([0xff, 0xd8, 0xff])], { type: "image/jpeg" }), "photo.jpg");
+  const unavailableResponse = await worker.fetch(new Request("https://api.example/api/v1/admin/images", {
+    method: "POST",
+    headers: { authorization: `Bearer ${unavailableToken}`, origin: "https://pair-lab-imperial.github.io" },
+    body: form,
+  }), unavailable.environment);
+  assert.equal(unavailableResponse.status, 503);
+  assert.equal((await unavailableResponse.json()).error.code, "image_storage_unavailable");
 });
 
 test("public proposal routes list and create equipment suggestions", async () => {

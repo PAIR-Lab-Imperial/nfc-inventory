@@ -1,5 +1,6 @@
 import { buildInventoryWorkbook } from "./xlsx-export.js";
 import { matchesAdminFilters } from "./admin-filters.js?v=0.12.0";
+import { IMAGE_ACCEPT, suggestAssetCode, validateImageFile } from "./admin-maintenance.js?v=0.15.0";
 
 const apiBaseUrl = window.NFC_INVENTORY_CONFIG?.apiBaseUrl?.replace(/\/$/, "");
 const storageKey = "pair-lab-admin-session";
@@ -8,6 +9,7 @@ const placeholderPhotoUrl = new URL("./assets/equipment-placeholder.svg", window
 
 let currentData = null;
 let currentSummary = null;
+let currentFeatures = { imageUploads: false };
 let activeView = "equipment";
 
 function escapeHtml(value) {
@@ -26,7 +28,8 @@ function getToken() {
 async function apiRequest(path, { method = "GET", body = null, authenticated = false } = {}) {
   if (!apiBaseUrl) throw new Error("The inventory API has not been configured.");
   const headers = { Accept: "application/json" };
-  if (body) headers["Content-Type"] = "application/json";
+  const isFormData = body instanceof FormData;
+  if (body && !isFormData) headers["Content-Type"] = "application/json";
   if (authenticated) {
     const token = getToken();
     if (!token) throw new Error("Administrator sign-in is required.");
@@ -35,7 +38,7 @@ async function apiRequest(path, { method = "GET", body = null, authenticated = f
   const response = await fetch(`${apiBaseUrl}${path}`, {
     method,
     headers,
-    body: body ? JSON.stringify(body) : null,
+    body: isFormData ? body : body ? JSON.stringify(body) : null,
   });
   const result = await response.json().catch(() => null);
   if (!response.ok) {
@@ -448,6 +451,75 @@ function field(label, name, value = "", attributes = "") {
   return `<label><span>${label}</span><input name="${name}" value="${escapeHtml(value ?? "")}" ${attributes}></label>`;
 }
 
+function photoEditor(label, urlName, fileName, value) {
+  const photoUrl = value || placeholderPhotoUrl;
+  const uploadControl = currentFeatures.imageUploads
+    ? `<label><span>${escapeHtml(label)}</span><input name="${fileName}" data-photo-file type="file" accept="${IMAGE_ACCEPT}" capture="environment"><small>Take a photo or choose a JPEG, PNG or WebP file up to 8 MB.</small></label>`
+    : `<p class="photo-upload-unavailable">Direct uploads will appear after image storage is enabled. You can use an image URL now.</p>`;
+  return `
+    <div class="photo-editor" data-photo-editor>
+      <img data-photo-preview data-equipment-photo src="${escapeHtml(photoUrl)}" alt="${escapeHtml(label)} preview">
+      <div class="photo-editor-fields">
+        ${uploadControl}
+        <label><span>Image URL</span><input name="${urlName}" data-photo-url value="${escapeHtml(photoUrl)}" required type="url" maxlength="2000"><small>Uploaded images fill this automatically. You can still paste an external image URL.</small></label>
+        <small class="photo-editor-status" data-photo-status aria-live="polite"></small>
+      </div>
+    </div>
+  `;
+}
+
+function bindPhotoEditors(root) {
+  root.querySelectorAll("[data-photo-editor]").forEach((editor) => {
+    const fileInput = editor.querySelector("[data-photo-file]");
+    const urlInput = editor.querySelector("[data-photo-url]");
+    const preview = editor.querySelector("[data-photo-preview]");
+    const status = editor.querySelector("[data-photo-status]");
+    fileInput?.addEventListener("change", () => {
+      const file = fileInput.files?.[0];
+      const validationError = validateImageFile(file);
+      fileInput.setCustomValidity(validationError || "");
+      status.textContent = validationError || (file ? `${file.name} selected` : "");
+      if (!file || validationError) return;
+      const previewUrl = URL.createObjectURL(file);
+      preview.addEventListener("load", () => URL.revokeObjectURL(previewUrl), { once: true });
+      preview.src = previewUrl;
+    });
+    urlInput.addEventListener("input", () => {
+      if (!fileInput?.files?.length && urlInput.validity.valid) preview.src = urlInput.value || placeholderPhotoUrl;
+    });
+  });
+}
+
+async function uploadSelectedPhoto(editor, assetCode) {
+  const fileInput = editor.querySelector("[data-photo-file]");
+  const urlInput = editor.querySelector("[data-photo-url]");
+  const preview = editor.querySelector("[data-photo-preview]");
+  const status = editor.querySelector("[data-photo-status]");
+  const file = fileInput?.files?.[0];
+  if (!file) return urlInput.value;
+  const validationError = validateImageFile(file);
+  if (validationError) throw new Error(validationError);
+  status.textContent = "Uploading image…";
+  const upload = new FormData();
+  upload.set("assetCode", assetCode);
+  upload.set("file", file, file.name);
+  try {
+    const { image } = await apiRequest("/api/v1/admin/images", {
+      method: "POST",
+      body: upload,
+      authenticated: true,
+    });
+    urlInput.value = image.url;
+    preview.src = image.url;
+    fileInput.value = "";
+    status.textContent = "Image uploaded";
+    return image.url;
+  } catch (error) {
+    status.textContent = "Upload failed";
+    throw error;
+  }
+}
+
 function componentRow(component = {}) {
   return `
     <fieldset class="component-editor">
@@ -458,8 +530,8 @@ function componentRow(component = {}) {
         ${field("Manufacturer", "componentManufacturer", component.manufacturer, "maxlength=150")}
         ${field("Model", "componentModel", component.model, "maxlength=150")}
         ${field("Serial number", "componentSerialNumber", component.serialNumber, "maxlength=200")}
-        ${field("Photo URL", "componentPhotoUrl", component.photoUrl || placeholderPhotoUrl, "required type=url maxlength=2000")}
       </div>
+      ${photoEditor("Component photo", "componentPhotoUrl", "componentPhotoFile", component.photoUrl)}
       <label class="check-field"><input name="componentRequired" type="checkbox" ${component.requiredOnReturn === false ? "" : "checked"}><span>Required on return</span></label>
       <label><span>Notes</span><textarea name="componentNotes" rows="2" maxlength="500">${escapeHtml(component.notes || "")}</textarea></label>
     </fieldset>
@@ -473,7 +545,7 @@ function openEquipmentDialog(item = null) {
     <form method="dialog" id="equipment-form" class="admin-edit-form">
       <div class="dialog-heading"><div><p class="eyebrow">Equipment record</p><h2>${item ? `Edit ${escapeHtml(item.assetCode)}` : "Add equipment"}</h2></div><button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button></div>
       <div class="admin-field-grid">
-        ${field("Asset code", "assetCode", item?.assetCode, `${item ? "readonly" : "required"} maxlength=20 pattern="[A-Za-z][A-Za-z0-9]{1,7}-[0-9]{3,6}"`)}
+        <label><span>Asset code</span><input name="assetCode" value="${escapeHtml(item?.assetCode || "")}" ${item ? "readonly" : "required"} maxlength="20" pattern="[A-Za-z][A-Za-z0-9]{1,7}-[0-9]{3,6}"><small>${item ? "Permanent identifier" : "Suggested from the selected category; edit if needed."}</small></label>
         ${field("Equipment name", "name", item?.name, "required maxlength=150")}
         <label><span>Category</span><select name="category" required>${categoryOptions}</select></label>
         <label><span>Type</span><select name="itemType" required><option value="individual" ${item?.itemType !== "bundle" ? "selected" : ""}>Individual</option><option value="bundle" ${item?.itemType === "bundle" ? "selected" : ""}>Bundle</option></select></label>
@@ -487,8 +559,8 @@ function openEquipmentDialog(item = null) {
         ${field("Purchase price", "purchasePrice", item?.purchasePrice, "type=number min=0 step=0.01")}
         ${field("Currency", "currency", item?.currency || "GBP", 'maxlength=3 pattern="[A-Za-z]{3}"')}
         ${field("Supplier", "supplier", item?.supplier, "maxlength=200")}
-        ${field("Photo URL", "photoUrl", item?.photoUrl || placeholderPhotoUrl, "required type=url maxlength=2000")}
       </div>
+      ${photoEditor("Equipment photo", "photoUrl", "photoFile", item?.photoUrl)}
       <label><span>Public specifications</span><textarea name="publicSpecifications" rows="3" maxlength="2000">${escapeHtml(item?.publicSpecifications || "")}</textarea></label>
       <label><span>Public notes</span><textarea name="publicNotes" rows="3" maxlength="1000">${escapeHtml(item?.publicNotes || "")}</textarea></label>
       <label><span>Administrator notes</span><textarea name="adminNotes" rows="3" maxlength="2000">${escapeHtml(item?.adminNotes || "")}</textarea></label>
@@ -504,8 +576,24 @@ function openEquipmentDialog(item = null) {
   const componentSection = dialog.querySelector("#components-section");
   const componentEditor = dialog.querySelector("#components-editor");
   const typeSelect = form.elements.namedItem("itemType");
+  const assetCodeInput = form.elements.namedItem("assetCode");
+  const categorySelect = form.elements.namedItem("category");
+  let suggestedCode = "";
+  const refreshSuggestedCode = () => {
+    if (item) return;
+    const nextCode = suggestAssetCode(currentData.categories, currentData.equipment, categorySelect.value);
+    if (!assetCodeInput.value || assetCodeInput.value === suggestedCode) assetCodeInput.value = nextCode;
+    suggestedCode = nextCode;
+  };
+  categorySelect.addEventListener("change", refreshSuggestedCode);
+  assetCodeInput.addEventListener("blur", () => { assetCodeInput.value = assetCodeInput.value.toLocaleUpperCase("en-GB"); });
+  refreshSuggestedCode();
+  bindPhotoEditors(form);
   typeSelect.addEventListener("change", () => { componentSection.hidden = typeSelect.value !== "bundle"; });
-  dialog.querySelector("#add-component").addEventListener("click", () => { componentEditor.insertAdjacentHTML("beforeend", componentRow()); });
+  dialog.querySelector("#add-component").addEventListener("click", () => {
+    componentEditor.insertAdjacentHTML("beforeend", componentRow());
+    bindPhotoEditors(componentEditor.lastElementChild);
+  });
   dialog.addEventListener("click", (event) => {
     if (event.target.matches("[data-remove-component]")) event.target.closest(".component-editor").remove();
   });
@@ -514,27 +602,37 @@ function openEquipmentDialog(item = null) {
     event.preventDefault();
     if (!form.reportValidity()) return;
     const formData = new FormData(form);
-    const components = [...form.querySelectorAll(".component-editor")].map((row) => ({
-      name: row.querySelector('[name="componentName"]').value,
-      quantity: Number(row.querySelector('[name="componentQuantity"]').value),
-      manufacturer: row.querySelector('[name="componentManufacturer"]').value,
-      model: row.querySelector('[name="componentModel"]').value,
-      serialNumber: row.querySelector('[name="componentSerialNumber"]').value,
-      photoUrl: row.querySelector('[name="componentPhotoUrl"]').value,
-      requiredOnReturn: row.querySelector('[name="componentRequired"]').checked,
-      notes: row.querySelector('[name="componentNotes"]').value,
+    const assetCode = String(formData.get("assetCode") || "").toLocaleUpperCase("en-GB");
+    const componentEntries = [...form.querySelectorAll(".component-editor")].map((row) => ({
+      editor: row.querySelector("[data-photo-editor]"),
+      value: {
+        name: row.querySelector('[name="componentName"]').value,
+        quantity: Number(row.querySelector('[name="componentQuantity"]').value),
+        manufacturer: row.querySelector('[name="componentManufacturer"]').value,
+        model: row.querySelector('[name="componentModel"]').value,
+        serialNumber: row.querySelector('[name="componentSerialNumber"]').value,
+        photoUrl: row.querySelector('[name="componentPhotoUrl"]').value,
+        requiredOnReturn: row.querySelector('[name="componentRequired"]').checked,
+        notes: row.querySelector('[name="componentNotes"]').value,
+      },
     }));
     const payload = {
-      assetCode: formData.get("assetCode"), name: formData.get("name"), category: formData.get("category"),
+      assetCode, name: formData.get("name"), category: formData.get("category"),
       itemType: formData.get("itemType"), manufacturer: formData.get("manufacturer"), model: formData.get("model"),
       serialNumber: formData.get("serialNumber"), location: formData.get("location"), condition: formData.get("condition"),
       lifecycleStatus: formData.get("lifecycleStatus"), purchaseDate: formData.get("purchaseDate"),
       purchasePrice: formData.get("purchasePrice"), currency: formData.get("currency"), supplier: formData.get("supplier"),
       photoUrl: formData.get("photoUrl"), publicSpecifications: formData.get("publicSpecifications"),
       publicNotes: formData.get("publicNotes"), adminNotes: formData.get("adminNotes"),
-      components: formData.get("itemType") === "bundle" ? components : [],
+      components: formData.get("itemType") === "bundle" ? componentEntries.map((entry) => entry.value) : [],
     };
     await submitAdminForm(form, async () => {
+      payload.photoUrl = await uploadSelectedPhoto(form.querySelector("[data-photo-editor]"), assetCode);
+      if (payload.itemType === "bundle") {
+        for (const entry of componentEntries) {
+          entry.value.photoUrl = await uploadSelectedPhoto(entry.editor, assetCode);
+        }
+      }
       await apiRequest(item ? `/api/v1/admin/equipment/${encodeURIComponent(item.assetCode)}` : "/api/v1/admin/equipment", {
         method: item ? "PUT" : "POST", body: payload, authenticated: true,
       });
@@ -824,6 +922,7 @@ function bindDashboardEvents() {
     window.sessionStorage.removeItem(storageKey);
     currentData = null;
     currentSummary = null;
+    currentFeatures = { imageUploads: false };
     renderLogin("You have signed out.");
   });
   document.querySelectorAll("[data-admin-view]").forEach((button) => button.addEventListener("click", () => showView(button.dataset.adminView)));
@@ -842,10 +941,14 @@ function bindDashboardEvents() {
 
 async function loadDashboard(message = "") {
   try {
-    [currentSummary, currentData] = await Promise.all([
+    const [summary, data, apiInfo] = await Promise.all([
       apiRequest("/api/v1/admin/summary", { authenticated: true }),
       apiRequest("/api/v1/admin/data", { authenticated: true }),
+      apiRequest("/api/v1"),
     ]);
+    currentSummary = summary;
+    currentData = data;
+    currentFeatures = { imageUploads: apiInfo.features?.imageUploads === true };
     renderDashboard(message);
   } catch (error) {
     if (error?.status === 401) window.sessionStorage.removeItem(storageKey);

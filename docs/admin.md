@@ -18,9 +18,8 @@ the ignored `worker/.dev.vars` file; `worker/.dev.vars.example` documents the
 required shape.
 
 The password must contain at least twelve characters. Use a unique password from
-the lab's approved password manager for real use. The current dummy credentials
-are only for the implementation pilot and must be rotated before other people
-are invited to the dashboard.
+the lab's approved password manager for real use. Production credentials are
+already managed as Worker secrets; never copy them into repository files.
 
 ## Set or rotate production credentials
 
@@ -51,9 +50,18 @@ To change local credentials, edit the ignored `worker/.dev.vars` file and restar
 
 The dashboard provides protected modules for equipment and bundle editing,
 member maintenance, proposal review, exports, and NFC label creation or
-replacement. Equipment and every bundle component can use a separate public photo
-URL. New records default to the maintained placeholder when no reviewed image is
-available.
+replacement. New asset codes are suggested from the selected category's prefix
+and next available number, but an administrator can edit the suggestion before
+saving.
+
+Equipment and every bundle component can use a separate public photo. The image
+editor always accepts a reviewed HTTPS image URL and shows a preview. When the
+Cloudflare `IMAGES` R2 binding is enabled, it also offers a file picker and phone
+camera control for JPEG, PNG and WebP files up to 8 MB. The upload is completed
+before the equipment record is saved, and the resulting permanent URL is filled
+in automatically. Until R2 is enabled, the API advertises the feature as
+unavailable and the dashboard keeps the URL workflow visible, so existing
+maintenance is unaffected.
 
 Each management table has local filters. Equipment can be searched and filtered
 by category, type and live availability; members by active state; NFC labels by

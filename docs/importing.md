@@ -56,8 +56,11 @@ the real components when they are known.
 reference is also public. Certificate, receipt and record references are
 admin-only and may contain either an HTTP/HTTPS address or a future storage key.
 
-## Initial production seed
+## Current canonical workbook
 
-The first production import contains 9 categories, 31 equipment units, 3 known
-bundle components and 6 active members. The two audio bundles currently have no
-component rows, so validation reports two non-blocking warnings.
+The maintained workbook currently contains 13 categories, 80 equipment units,
+30 bundle-component rows and 7 active members. Run
+`npm run inventory:validate` before every import; the checked-in workbook is
+expected to complete with no errors or warnings. Counts will change as the lab
+inventory is maintained, so validation output is the authoritative pre-import
+summary.

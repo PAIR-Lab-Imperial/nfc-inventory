@@ -22,6 +22,12 @@ const CONDITIONS = new Set(["good", "fair", "damaged", "unknown"]);
 const LIFECYCLE_STATUSES = new Set(["active", "maintenance", "missing", "retired"]);
 const ADMIN_AVAILABILITY_VALUES = new Set(["free", "reserved", "in_use", "not_unboxed"]);
 const PROPOSAL_STATUSES = new Set(["proposed", "ordered", "received"]);
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const IMAGE_TYPES = new Map([
+  ["image/jpeg", "jpg"],
+  ["image/png", "png"],
+  ["image/webp", "webp"],
+]);
 
 class RequestError extends Error {
   constructor(code, message, status = 400) {
@@ -34,7 +40,7 @@ class RequestError extends Error {
 function withCors(headers, origin) {
   const result = new Headers(headers);
   result.set("access-control-allow-origin", origin);
-  result.set("access-control-allow-methods", "GET, POST, PUT, PATCH, OPTIONS");
+  result.set("access-control-allow-methods", "GET, HEAD, POST, PUT, PATCH, OPTIONS");
   result.set("access-control-allow-headers", "content-type, authorization");
   result.set("vary", "Origin");
   return result;
@@ -197,6 +203,19 @@ function decodeRecordId(value, label = "record") {
   return recordId;
 }
 
+function decodeImageKey(value) {
+  let key;
+  try {
+    key = decodeURIComponent(value);
+  } catch {
+    throw new RequestError("invalid_image_key", "Invalid image identifier");
+  }
+  if (!/^equipment\/[a-z0-9-]+\/[a-z0-9-]+\.(?:jpg|png|webp)$/.test(key)) {
+    throw new RequestError("invalid_image_key", "Invalid image identifier");
+  }
+  return key;
+}
+
 async function sha256Hex(value) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -285,6 +304,107 @@ async function requireAdmin(request, env) {
     throw new RequestError("invalid_session", "Administrator session is invalid or expired", 401);
   }
   return { username, expiresAt: new Date(payload.exp * 1000).toISOString() };
+}
+
+function hasImageSignature(buffer, contentType) {
+  const bytes = new Uint8Array(buffer);
+  if (contentType === "image/jpeg") {
+    return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  }
+  if (contentType === "image/png") {
+    const signature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+    return bytes.length >= signature.length && signature.every((value, index) => bytes[index] === value);
+  }
+  if (contentType === "image/webp") {
+    return bytes.length >= 12
+      && String.fromCharCode(...bytes.slice(0, 4)) === "RIFF"
+      && String.fromCharCode(...bytes.slice(8, 12)) === "WEBP";
+  }
+  return false;
+}
+
+async function uploadAdminImage(request, env, origin) {
+  requireWriteOrigin(request, origin);
+  const admin = await requireAdmin(request, env);
+  if (!env.IMAGES?.put) {
+    throw new RequestError("image_storage_unavailable", "Image uploads have not been enabled yet", 503);
+  }
+  const contentLength = Number(request.headers.get("content-length") || 0);
+  if (Number.isFinite(contentLength) && contentLength > MAX_IMAGE_BYTES + 100_000) {
+    throw new RequestError("image_too_large", "Image files may not exceed 8 MB", 413);
+  }
+
+  let form;
+  try {
+    form = await request.formData();
+  } catch {
+    throw new RequestError("invalid_image_upload", "Upload must use multipart form data");
+  }
+  const assetCodeValue = form.get("assetCode");
+  const assetCode = decodeAssetCode(typeof assetCodeValue === "string" ? assetCodeValue : "").toUpperCase();
+  const file = form.get("file");
+  if (!file || typeof file !== "object" || typeof file.arrayBuffer !== "function") {
+    throw new RequestError("invalid_image_upload", "An image file is required");
+  }
+  const contentType = String(file.type || "").toLocaleLowerCase("en-GB");
+  const extension = IMAGE_TYPES.get(contentType);
+  if (!extension) {
+    throw new RequestError("unsupported_image_type", "Use a JPEG, PNG or WebP image");
+  }
+  if (!Number.isFinite(file.size) || file.size < 1) {
+    throw new RequestError("invalid_image_upload", "The image file is empty");
+  }
+  if (file.size > MAX_IMAGE_BYTES) {
+    throw new RequestError("image_too_large", "Image files may not exceed 8 MB", 413);
+  }
+  const buffer = await file.arrayBuffer();
+  if (!hasImageSignature(buffer, contentType)) {
+    throw new RequestError("invalid_image_upload", "The file contents do not match its image type");
+  }
+
+  const uploadedAt = new Date().toISOString();
+  const key = `equipment/${assetCode.toLocaleLowerCase("en-GB")}/${crypto.randomUUID()}.${extension}`;
+  const publicUrl = new URL(`/api/v1/images/${key}`, request.url).href;
+  await env.IMAGES.put(key, buffer, {
+    httpMetadata: { contentType },
+    customMetadata: { assetCode, uploadedBy: admin.username, uploadedAt },
+  });
+  try {
+    await env.DB.prepare(`
+      INSERT INTO audit_events (
+        id, actor_type, actor_name, action, entity_type, entity_id, after_json, created_at
+      ) VALUES (?1, 'admin', ?2, 'equipment_image.uploaded', 'equipment_image', ?3, ?4, ?5)
+    `).bind(
+      crypto.randomUUID(),
+      admin.username,
+      key,
+      JSON.stringify({ assetCode, key, publicUrl, contentType, size: file.size }),
+      uploadedAt,
+    ).run();
+  } catch (error) {
+    await env.IMAGES.delete?.(key);
+    throw error;
+  }
+  return json({ image: { key, url: publicUrl, contentType, size: file.size, uploadedAt } }, { status: 201 }, origin);
+}
+
+async function getPublicImage(request, env, key, origin) {
+  if (!env.IMAGES?.get) {
+    throw new RequestError("image_storage_unavailable", "Image storage is unavailable", 503);
+  }
+  const object = await env.IMAGES.get(key);
+  if (!object) throw new RequestError("image_not_found", "Image not found", 404);
+  const headers = new Headers({
+    "cache-control": "public, max-age=31536000, immutable",
+    "content-type": object.httpMetadata?.contentType || "application/octet-stream",
+    "x-content-type-options": "nosniff",
+  });
+  object.writeHttpMetadata?.(headers);
+  if (object.httpEtag) headers.set("etag", object.httpEtag);
+  return new Response(request.method === "HEAD" ? null : object.body, {
+    status: 200,
+    headers: withCors(headers, origin),
+  });
 }
 
 function nullableBoolean(value) {
@@ -1865,7 +1985,7 @@ export default {
         {
           ok: true,
           service: "pair-lab-nfc-inventory-api",
-          version: "0.14.0",
+          version: "0.15.0",
         },
         {},
         allowedOrigin,
@@ -1878,6 +1998,7 @@ export default {
           name: "PAIR Lab NFC Inventory API",
           version: "v1",
           status: "catalogue",
+          features: { imageUploads: Boolean(env.IMAGES?.put) },
         },
         {},
         allowedOrigin,
@@ -1928,6 +2049,10 @@ export default {
 
     if (request.method === "GET" && url.pathname === "/api/v1/admin/export/operations") {
       return await getAdminOperationalExport(request, env, allowedOrigin);
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/v1/admin/images") {
+      return await uploadAdminImage(request, env, allowedOrigin);
     }
 
     if (request.method === "POST" && url.pathname === "/api/v1/admin/equipment") {
@@ -1986,6 +2111,11 @@ export default {
     if (request.method === "GET" && nfcMatch) {
       const token = decodeNfcToken(nfcMatch[1]);
       return await resolveNfcLabel(env, token, allowedOrigin);
+    }
+
+    const imageMatch = /^\/api\/v1\/images\/(.+)$/.exec(url.pathname);
+    if (["GET", "HEAD"].includes(request.method) && imageMatch) {
+      return await getPublicImage(request, env, decodeImageKey(imageMatch[1]), allowedOrigin);
     }
 
     const equipmentActionMatch = /^\/api\/v1\/equipment\/([^/]+)\/(reservations|checkouts|return)$/.exec(url.pathname);
