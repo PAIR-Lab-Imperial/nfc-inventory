@@ -17,6 +17,7 @@
     "nfc:create-label": "node scripts/create-nfc-label.mjs",
     "worker:dev": "wrangler dev --config worker/wrangler.jsonc",
     "worker:deploy": "wrangler deploy --config worker/wrangler.jsonc",
+    "worker:smoke": "node scripts/smoke-worker.mjs",
     "db:migrate:local": "wrangler d1 migrations apply pair-lab-nfc-inventory --local --config worker/wrangler.jsonc",
     "db:migrate:remote": "wrangler d1 migrations apply pair-lab-nfc-inventory --remote --config worker/wrangler.jsonc",
     "db:seed:local": "npm run inventory:build-sql && wrangler d1 execute pair-lab-nfc-inventory --local --config worker/wrangler.jsonc --file outputs/inventory-import.sql --yes",

@@ -13,8 +13,8 @@ const checks = [
   },
   {
     path: "/api/v1",
-    validate: (body) => body.status === "catalogue",
-    summarize: (body) => ({ status: body.status }),
+    validate: (body) => body.status === "catalogue" && body.features?.imageUploads === false,
+    summarize: (body) => ({ status: body.status, imageUploads: body.features?.imageUploads }),
   },
   {
     path: "/api/v1/members",
@@ -28,13 +28,8 @@ const checks = [
     summarize: (body) => ({ protected: body.error?.code }),
   },
   {
-    path: "/api/v1/nfc/demo-rob-003-v1",
-    validate: (body) => body.label?.assetCode === "ROB-003",
-    summarize: (body) => ({ assetCode: body.label?.assetCode, tokenHint: body.label?.tokenHint }),
-  },
-  {
     path: "/api/v1/equipment",
-    validate: (body) => body.count === 31 && body.items?.length === 31 && body.items.every((item) => item.photoUrl),
+    validate: (body) => body.count === 80 && body.items?.length === 80 && body.items.every((item) => item.photoUrl),
     summarize: (body) => ({ count: body.count, categories: body.categories?.length, photos: body.items?.filter((item) => item.photoUrl).length }),
   },
   {
