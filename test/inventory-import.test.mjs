@@ -10,7 +10,7 @@ test("canonical workbook validates and contains the expected seed records", asyn
   assert.deepEqual(report.errors, []);
   assert.deepEqual(report.counts, {
     categories: 13,
-    equipment: 79,
+    equipment: 80,
     components: 30,
     members: 7,
     files: 33,
@@ -22,8 +22,8 @@ test("canonical workbook validates and contains the expected seed records", asyn
     ["Naimeh", 1, null],
   );
   assert.equal(data.equipment.filter((item) => item.name === "Azure Kinect DK").length, 2);
-  assert.equal(data.equipment.filter((item) => item.primaryPhotoUrl).length, 79);
-  assert.equal(data.equipment.filter((item) => !item.primaryPhotoUrl.endsWith("equipment-placeholder.svg")).length, 57);
+  assert.equal(data.equipment.filter((item) => item.primaryPhotoUrl).length, 80);
+  assert.equal(data.equipment.filter((item) => !item.primaryPhotoUrl.endsWith("equipment-placeholder.svg")).length, 58);
   assert.equal(data.components.filter((item) => item.photoUrl).length, 30);
   assert.equal(data.components.filter((item) => !item.photoUrl.endsWith("equipment-placeholder.svg")).length, 20);
   assert.equal(data.equipment.some((item) => item.assetCode === "CAM-005"), false);
@@ -47,6 +47,13 @@ test("canonical workbook validates and contains the expected seed records", asyn
       ["AUD-004", "DJI Mic 3 Transmitter", "DJI"],
     ],
   );
+  const djiMicSet = data.equipment.find((item) => item.assetCode === "AUD-005");
+  assert.deepEqual(
+    [djiMicSet?.name, djiMicSet?.itemType, djiMicSet?.manufacturer, djiMicSet?.model],
+    ["DJI Mic 3 Set", "individual", "DJI", "DJI Mic 3 (2 TX + 1 RX)"],
+  );
+  assert.match(djiMicSet?.primaryPhotoUrl ?? "", /473691cc5e140d0341a30b31b479c627/);
+  assert.equal(data.components.some((item) => item.assetCode === "AUD-005"), false);
   assert.deepEqual(
     ["MNT-003", "MNT-004", "MNT-005", "MNT-008", "MNT-009"].map((assetCode) => {
       const item = data.equipment.find((equipment) => equipment.assetCode === assetCode);

@@ -14,6 +14,7 @@ The catalogue keeps local copies of product-identification images where practica
 | `boya-v30.jpg` | Boya wireless lavalier microphone | [Purchase listing](https://www.amazon.co.uk/dp/B0CZ36XNWF) |
 | `dji-mic-mini.jpg` | DJI Mic Mini | [Purchase listing](https://www.amazon.co.uk/dp/B0DDL8WGH5) |
 | Remote DJI CDN image | DJI Mic 3 Transmitter, DMT03 | [Official DJI UK product page](https://store.dji.com/uk/product/dji-mic-3-transmitter?set_region=GB) |
+| Remote DJI CDN image | DJI Mic 3 set, 2 TX + 1 RX + charging case | [Official DJI product page](https://store.dji.com/product/dji-mic-3) |
 | `belkin-bsv804.jpg` | Belkin BSV804 extension lead | [TBM product image](https://shop.tbm.com.my/cdn/shop/products/product-105315.jpg?v=1626894857&width=720) |
 | `tapo-p110.jpg` | Tapo P110 smart plug | [Tapo UK store](https://uk.store.tapo.com/products/smarthome-tapo-p110-smart-plug-energy-monitoring) |
 | `lenovo-tab-m10-gen3.jpg` | Lenovo Tab M10 (3rd Gen), TB328FU | [Exact-model product listing](https://www.komputronik.pl/product/811106/lenovo-tab-m10-3-gen-tb-328fu-zaae0050pl-szary.html) and [Lenovo datasheet](https://psref.lenovo.com/syspool/Sys/PDF/datasheet/Lenovo_Tab-M10_3rd-Gen_datasheet_EN.pdf) |
