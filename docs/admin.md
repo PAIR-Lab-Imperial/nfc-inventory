@@ -56,11 +56,11 @@ saving.
 
 Equipment and every bundle component can use a separate public photo. The image
 editor always accepts a reviewed HTTPS image URL and shows a preview. When the
-Cloudflare `IMAGES` R2 binding is enabled, it also offers a file picker and phone
+Cloudflare `IMAGES` R2 binding is enabled. It offers a file picker and phone
 camera control for JPEG, PNG and WebP files up to 8 MB. The upload is completed
 before the equipment record is saved, and the resulting permanent URL is filled
-in automatically. Until R2 is enabled, the API advertises the feature as
-unavailable and the dashboard keeps the URL workflow visible, so existing
+in automatically. If storage is ever unavailable, the API advertises the feature
+as unavailable and the dashboard keeps the URL workflow visible, so existing
 maintenance is unaffected.
 
 Each management table has local filters. Equipment can be searched and filtered

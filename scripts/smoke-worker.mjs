@@ -13,7 +13,7 @@ const checks = [
   },
   {
     path: "/api/v1",
-    validate: (body) => body.status === "catalogue" && body.features?.imageUploads === false,
+    validate: (body) => body.status === "catalogue" && body.features?.imageUploads === true,
     summarize: (body) => ({ status: body.status, imageUploads: body.features?.imageUploads }),
   },
   {

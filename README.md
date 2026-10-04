@@ -11,7 +11,7 @@ NFC label. Scanning a label opens the public page for that equipment.
 | Public web app | GitHub Pages | Equipment catalogue, item pages, reservations and check-in/out forms |
 | API | Cloudflare Worker | Validation, availability rules, administration and audit logging |
 | Database | Cloudflare D1 | Equipment, members, labels, reservations, checkouts and proposals |
-| File storage | Cloudflare R2 (activation pending) | Administrator photo uploads; external image URLs remain supported |
+| File storage | Cloudflare R2 | Administrator photo uploads; external image URLs remain supported |
 
 The browser never connects directly to D1 or receives administrator secrets.
 
@@ -40,7 +40,8 @@ docs/                   Architecture and deployment documentation
 - [x] Administrator equipment, bundle, member and NFC-label management
 - [x] Public equipment and bundle-component photos, with source records and maintained placeholders where the model is ambiguous
 - [x] Tested administrator image uploader with safe URL fallback and automatic asset-code suggestions
-- [ ] Enable R2 on the Cloudflare account, bind the image bucket and run the uploader live test
+- [x] Enable R2, bind the image bucket and deploy the administrator uploader
+- [ ] Complete one live administrator photo upload and confirm it in the public catalogue
 - [x] Member equipment proposals and administrator review workflow
 - [x] Round-trip inventory workbook and protected operational exports
 - [x] Guarded Worker deployment and encrypted weekly backup workflows

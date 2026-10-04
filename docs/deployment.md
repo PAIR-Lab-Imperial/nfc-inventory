@@ -8,6 +8,7 @@ Current production foundation:
 - GitHub Pages: `https://pair-lab-imperial.github.io/nfc-inventory/`
 - Worker API: `https://pair-lab-nfc-inventory-api.pair-lab-nfc-inventory.workers.dev/`
 - D1 database: `pair-lab-nfc-inventory` in Western Europe
+- R2 image bucket: `pair-lab-nfc-inventory-images`
 - Current inventory: 13 categories, 80 equipment units, 30 bundle components and 7 active members
 - Public catalogue, member actions and NFC token resolution
 - Production NFC associations: one random, replaceable association per equipment record
@@ -69,12 +70,12 @@ after changing it.
 Set the resulting Worker URL in `web/config.js`. This URL is public configuration,
 not a secret.
 
-## 3. Optional administrator image uploads
+## 3. Administrator image uploads
 
-The uploader code is deployed safely behind an API feature flag. External image
-URLs remain fully supported. To enable direct uploads, first activate R2 in the
-Cloudflare dashboard and review the account's storage terms. Then create the
-bucket:
+The production uploader is enabled through the `IMAGES` R2 binding, and external
+image URLs remain supported. For recovery or a new Cloudflare account, first
+activate R2 in the Cloudflare dashboard and review the account's storage terms.
+Then create the bucket:
 
 ```bash
 npx wrangler r2 bucket create pair-lab-nfc-inventory-images --config worker/wrangler.jsonc
