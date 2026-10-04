@@ -12,14 +12,22 @@ An organization or repository administrator must add these under **Settings →
 Secrets and variables → Actions**:
 
 - `CLOUDFLARE_ACCOUNT_ID`: the Cloudflare account ID;
-- `CLOUDFLARE_API_TOKEN`: a narrowly scoped token that can read/export and execute
-  SQL on the `pair-lab-nfc-inventory` D1 database and deploy the Worker;
+- `CLOUDFLARE_API_TOKEN`: a token scoped to the PAIR Lab Cloudflare account with
+  Workers Editor (or Workers Scripts Edit) and D1 Edit access. Worker access
+  supports continuous deployment; D1 Edit is required because the backup both
+  exports the database and records its status;
 - `BACKUP_PASSPHRASE`: a long unique passphrase kept in the lab's approved
   password manager.
 
-Until all three exist, the scheduled job exits successfully without creating a
-backup. After configuration, run the workflow manually once and confirm that the
-artifact exists and the latest `backup_runs` row says `completed`.
+Until all three exist, the job fails with a configuration error and does not
+create a misleading successful run. After configuration, run the workflow
+manually once and confirm that the artifact exists and the latest `backup_runs`
+row says `completed`.
+
+This setup can be completed on a phone, but use the Cloudflare and GitHub
+websites in a mobile browser rather than relying on their apps. GitHub's mobile
+site may need **Request desktop site** to expose repository Settings and Actions
+secrets. The GitHub app remains useful for monitoring the resulting workflow run.
 
 ## Restore drill
 

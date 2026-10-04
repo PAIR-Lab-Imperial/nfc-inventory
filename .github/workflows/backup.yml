@@ -38,7 +38,8 @@ jobs:
             echo "ready=true" >> "$GITHUB_OUTPUT"
           else
             echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "Backup skipped; configure CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID and BACKUP_PASSPHRASE."
+            echo "::error::Backup not created. Configure CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID and BACKUP_PASSPHRASE as repository Actions secrets."
+            exit 1
           fi
       - name: Create backup metadata
         if: steps.configuration.outputs.ready == 'true'
