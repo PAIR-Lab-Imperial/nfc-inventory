@@ -103,7 +103,7 @@ would fail while the current production version remains in place.
 The Worker workflow runs the full test suite and deploys changed API code after a
 push to `main`. It safely skips deployment until the `CLOUDFLARE_ACCOUNT_ID` and
 `CLOUDFLARE_API_TOKEN` repository secrets exist. The encrypted D1 backup workflow
-also requires `BACKUP_PASSPHRASE`, runs weekly, and retains encrypted GitHub
+also requires `BACKUP_PASSPHRASE`, runs monthly, and retains encrypted GitHub
 Actions artifacts for 90 days. See `backups.md` for setup and restore testing.
 
 ## 5. NFC rollout gate

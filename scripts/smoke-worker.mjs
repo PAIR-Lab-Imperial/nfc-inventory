@@ -8,7 +8,7 @@ if (!baseUrl) {
 const checks = [
   {
     path: "/health",
-    validate: (body) => body.ok === true && body.version === "0.15.0",
+    validate: (body) => body.ok === true && body.version === "0.16.0",
     summarize: (body) => ({ ok: body.ok, version: body.version }),
   },
   {

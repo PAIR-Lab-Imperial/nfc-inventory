@@ -17,6 +17,7 @@ The authoritative schema is the ordered SQL under `worker/migrations/`.
 - `proposals` and `proposal_options`: proposed, ordered and received purchasing work.
 - `audit_events`: append-only record of important mutations.
 - `backup_runs`: operational evidence for scheduled backups.
+- `r2_usage_counters`: monthly hard-stop counters for R2 uploads and reads.
 - `admin_login_attempts`: hashed client keys and short-lived failure counters;
   administrator credentials are Cloudflare secrets and never database rows.
 

@@ -48,6 +48,14 @@ class MutationStatement extends FakeStatement {
   }
 
   async first() {
+    if (this.query.includes("INSERT INTO r2_usage_counters")) {
+      const key = `${this.parameters[0]}:${this.parameters[1]}`;
+      const current = this.state.r2Usage.get(key) || 0;
+      if (current >= Number(this.parameters[3])) return null;
+      const operationCount = current + 1;
+      this.state.r2Usage.set(key, operationCount);
+      return { operation_count: operationCount };
+    }
     if (this.query.includes("FROM admin_login_attempts")) return this.state.loginAttempt;
     if (this.query.includes("AS equipment_count")) return this.state.adminSummary;
     if (this.query.includes("FROM nfc_labels")) {
@@ -145,6 +153,7 @@ function mutationEnvironment({ openCheckout = null, currentCheckout = null, nfcL
     operationalAudit: [],
     operationalBackups: [],
     images: new Map(),
+    r2Usage: new Map(),
     writes: [],
   };
   const environment = {
@@ -169,6 +178,15 @@ function mutationEnvironment({ openCheckout = null, currentCheckout = null, nfcL
           writeHttpMetadata(headers) {
             if (stored.httpMetadata.contentType) headers.set("content-type", stored.httpMetadata.contentType);
           },
+        };
+      },
+      async list() {
+        return {
+          objects: [...state.images.entries()].map(([key, stored]) => ({
+            key,
+            size: stored.size ?? stored.body?.byteLength ?? 0,
+          })),
+          truncated: false,
         };
       },
       async delete(key) {
@@ -626,8 +644,10 @@ test("administrator can upload a validated equipment image and retrieve it publi
   const imageResponse = await worker.fetch(new Request(body.image.url), environment);
   assert.equal(imageResponse.status, 200);
   assert.equal(imageResponse.headers.get("content-type"), "image/png");
-  assert.equal(imageResponse.headers.get("cache-control"), "public, max-age=31536000, immutable");
+  assert.equal(imageResponse.headers.get("cache-control"), "public, max-age=31536000, s-maxage=31536000, immutable");
   assert.deepEqual(new Uint8Array(await imageResponse.arrayBuffer()), png);
+  assert.equal([...state.r2Usage.entries()].find(([key]) => key.startsWith("class_a_upload:"))?.[1], 1);
+  assert.equal([...state.r2Usage.entries()].find(([key]) => key.startsWith("class_b_read:"))?.[1], 1);
 });
 
 test("image uploads reject unsupported content and unavailable storage", async () => {
@@ -658,6 +678,43 @@ test("image uploads reject unsupported content and unavailable storage", async (
   }), unavailable.environment);
   assert.equal(unavailableResponse.status, 503);
   assert.equal((await unavailableResponse.json()).error.code, "image_storage_unavailable");
+});
+
+test("R2 safety guard blocks uploads before the private bucket can approach the free storage allowance", async () => {
+  const { environment, state } = mutationEnvironment();
+  const token = await loginAdmin(environment);
+  state.images.set("equipment/rob-003/existing.png", {
+    body: new Uint8Array(),
+    size: 512 * 1024 * 1024,
+    httpMetadata: { contentType: "image/png" },
+  });
+  const form = new FormData();
+  form.set("assetCode", "ROB-003");
+  form.set("file", new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])], { type: "image/png" }), "new.png");
+  const response = await worker.fetch(new Request("https://api.example/api/v1/admin/images", {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, origin: "https://pair-lab-imperial.github.io" },
+    body: form,
+  }), environment);
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).error.code, "r2_free_tier_guard");
+  assert.equal(state.images.size, 1);
+});
+
+test("R2 safety guard blocks reads after the conservative monthly allowance", async () => {
+  const { environment, state } = mutationEnvironment();
+  state.images.set("equipment/rob-003/photo.png", {
+    body: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+    httpMetadata: { contentType: "image/png" },
+  });
+  const period = new Date().toISOString().slice(0, 7);
+  state.r2Usage.set(`class_b_read:${period}`, 250_000);
+  const response = await worker.fetch(
+    new Request("https://api.example/api/v1/images/equipment/rob-003/photo.png"),
+    environment,
+  );
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).error.code, "r2_free_tier_guard");
 });
 
 test("public proposal routes list and create equipment suggestions", async () => {

@@ -1,7 +1,7 @@
 # Automated database backups
 
-The `Encrypted D1 backup` GitHub Actions workflow runs every Monday at 04:17 UTC
-and can also be started manually. It exports the production D1 database,
+The `Encrypted D1 backup` GitHub Actions workflow runs on the first day of every
+month at 04:17 UTC and can also be started manually. It exports the production D1 database,
 compresses it, encrypts it with AES-256-CBC and PBKDF2, uploads only the encrypted
 file as a private workflow artifact, and retains it for 90 days. Each attempt is
 recorded in `backup_runs` for administrator visibility and operational auditing.

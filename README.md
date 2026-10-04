@@ -44,8 +44,9 @@ docs/                   Architecture and deployment documentation
 - [ ] Complete one live administrator photo upload and confirm it in the public catalogue
 - [x] Member equipment proposals and administrator review workflow
 - [x] Round-trip inventory workbook and protected operational exports
-- [x] Guarded Worker deployment and encrypted weekly backup workflows
-- [ ] Add the GitHub repository secrets and verify the first scheduled backup
+- [x] Guarded Worker deployment and encrypted monthly backup workflow
+- [x] GitHub backup secrets configured and first encrypted backup verified
+- [x] Conservative R2 storage and operation hard stops below the free allowances
 - [x] Physical NFC pilot scan-tested successfully
 - [x] 80-item production NFC/QR inventory and NTAG213 capacity validation
 - [ ] Write and scan-test the remaining physical tags; track progress in the administrator NFC view

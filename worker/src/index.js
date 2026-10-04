@@ -23,6 +23,10 @@ const LIFECYCLE_STATUSES = new Set(["active", "maintenance", "missing", "retired
 const ADMIN_AVAILABILITY_VALUES = new Set(["free", "reserved", "in_use", "not_unboxed"]);
 const PROPOSAL_STATUSES = new Set(["proposed", "ordered", "received"]);
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const R2_STORAGE_LIMIT_BYTES = 512 * 1024 * 1024;
+const R2_OBJECT_LIMIT = 300;
+const R2_MONTHLY_UPLOAD_LIMIT = 250;
+const R2_MONTHLY_READ_LIMIT = 250_000;
 const IMAGE_TYPES = new Map([
   ["image/jpeg", "jpg"],
   ["image/png", "png"],
@@ -323,6 +327,50 @@ function hasImageSignature(buffer, contentType) {
   return false;
 }
 
+function r2UsagePeriod() {
+  return new Date().toISOString().slice(0, 7);
+}
+
+async function reserveR2Usage(env, metric, limit) {
+  const period = r2UsagePeriod();
+  const result = await env.DB.prepare(`
+    INSERT INTO r2_usage_counters (metric, period, operation_count, updated_at)
+    VALUES (?1, ?2, 1, ?3)
+    ON CONFLICT(metric, period) DO UPDATE SET
+      operation_count = operation_count + 1,
+      updated_at = excluded.updated_at
+    WHERE operation_count < ?4
+    RETURNING operation_count
+  `).bind(metric, period, new Date().toISOString(), limit).first();
+  if (!result) {
+    throw new RequestError(
+      "r2_free_tier_guard",
+      "This month's image-storage safety allowance has been reached. Use existing image URLs until next month.",
+      503,
+    );
+  }
+  return Number(result.operation_count);
+}
+
+async function assertR2StorageCapacity(env, incomingBytes) {
+  if (!env.IMAGES?.list) {
+    throw new RequestError("image_storage_unavailable", "Image storage usage cannot be checked", 503);
+  }
+  const listing = await env.IMAGES.list({ limit: 1000 });
+  if (listing.truncated) {
+    throw new RequestError("r2_free_tier_guard", "Image storage safety limit has been reached", 503);
+  }
+  const objects = Array.isArray(listing.objects) ? listing.objects : [];
+  const storedBytes = objects.reduce((total, object) => total + Number(object.size || 0), 0);
+  if (objects.length >= R2_OBJECT_LIMIT || storedBytes + incomingBytes > R2_STORAGE_LIMIT_BYTES) {
+    throw new RequestError(
+      "r2_free_tier_guard",
+      "Image storage safety limit has been reached. Remove unused images before uploading another.",
+      503,
+    );
+  }
+}
+
 async function uploadAdminImage(request, env, origin) {
   requireWriteOrigin(request, origin);
   const admin = await requireAdmin(request, env);
@@ -362,6 +410,9 @@ async function uploadAdminImage(request, env, origin) {
     throw new RequestError("invalid_image_upload", "The file contents do not match its image type");
   }
 
+  await reserveR2Usage(env, "class_a_upload", R2_MONTHLY_UPLOAD_LIMIT);
+  await assertR2StorageCapacity(env, file.size);
+
   const uploadedAt = new Date().toISOString();
   const key = `equipment/${assetCode.toLocaleLowerCase("en-GB")}/${crypto.randomUUID()}.${extension}`;
   const publicUrl = new URL(`/api/v1/images/${key}`, request.url).href;
@@ -392,10 +443,11 @@ async function getPublicImage(request, env, key, origin) {
   if (!env.IMAGES?.get) {
     throw new RequestError("image_storage_unavailable", "Image storage is unavailable", 503);
   }
+  await reserveR2Usage(env, "class_b_read", R2_MONTHLY_READ_LIMIT);
   const object = await env.IMAGES.get(key);
   if (!object) throw new RequestError("image_not_found", "Image not found", 404);
   const headers = new Headers({
-    "cache-control": "public, max-age=31536000, immutable",
+    "cache-control": "public, max-age=31536000, s-maxage=31536000, immutable",
     "content-type": object.httpMetadata?.contentType || "application/octet-stream",
     "x-content-type-options": "nosniff",
   });
@@ -1985,7 +2037,7 @@ export default {
         {
           ok: true,
           service: "pair-lab-nfc-inventory-api",
-          version: "0.15.0",
+          version: "0.16.0",
         },
         {},
         allowedOrigin,

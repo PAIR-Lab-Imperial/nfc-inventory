@@ -63,6 +63,13 @@ in automatically. If storage is ever unavailable, the API advertises the feature
 as unavailable and the dashboard keeps the URL workflow visible, so existing
 maintenance is unaffected.
 
+The application enforces deliberately conservative R2 hard stops: 512 MiB stored,
+300 objects, 250 administrator uploads per calendar month and 250,000 uncached
+image reads per calendar month. Uploaded responses are cacheable for one year.
+When a limit is reached the Worker stops the R2 operation and the administrator
+can continue using external image URLs. These limits protect this bucket; other
+R2 buckets in the same Cloudflare account must be budgeted separately.
+
 Each management table has local filters. Equipment can be searched and filtered
 by category, type and live availability; members by active state; NFC labels by
 programming state; and proposals by workflow status. Filters affect only the
