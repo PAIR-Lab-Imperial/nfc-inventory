@@ -454,7 +454,14 @@ function field(label, name, value = "", attributes = "") {
 function photoEditor(label, urlName, fileName, value) {
   const photoUrl = value || placeholderPhotoUrl;
   const uploadControl = currentFeatures.imageUploads
-    ? `<label><span>${escapeHtml(label)}</span><input name="${fileName}" data-photo-file type="file" accept="${IMAGE_ACCEPT}" capture="environment"><small>Take a photo or choose a JPEG, PNG or WebP file up to 8 MB.</small></label>`
+    ? `<fieldset class="photo-input-group">
+        <legend>${escapeHtml(label)}</legend>
+        <div class="photo-input-actions">
+          <label><span>Choose existing photo</span><input name="${fileName}" data-photo-file type="file" accept="${IMAGE_ACCEPT}"></label>
+          <label><span>Take new photo</span><input name="${fileName}Camera" data-photo-camera type="file" accept="${IMAGE_ACCEPT}" capture="environment"></label>
+        </div>
+        <small>Use a JPEG, PNG or WebP file up to 8 MB.</small>
+      </fieldset>`
     : `<p class="photo-upload-unavailable">Direct uploads will appear after image storage is enabled. You can use an image URL now.</p>`;
   return `
     <div class="photo-editor" data-photo-editor>
@@ -471,31 +478,38 @@ function photoEditor(label, urlName, fileName, value) {
 function bindPhotoEditors(root) {
   root.querySelectorAll("[data-photo-editor]").forEach((editor) => {
     const fileInput = editor.querySelector("[data-photo-file]");
+    const cameraInput = editor.querySelector("[data-photo-camera]");
     const urlInput = editor.querySelector("[data-photo-url]");
     const preview = editor.querySelector("[data-photo-preview]");
     const status = editor.querySelector("[data-photo-status]");
-    fileInput?.addEventListener("change", () => {
-      const file = fileInput.files?.[0];
+    const updateSelection = (selectedInput, otherInput) => {
+      if (selectedInput.files?.length && otherInput) otherInput.value = "";
+      const file = selectedInput.files?.[0];
       const validationError = validateImageFile(file);
-      fileInput.setCustomValidity(validationError || "");
+      selectedInput.setCustomValidity(validationError || "");
       status.textContent = validationError || (file ? `${file.name} selected` : "");
       if (!file || validationError) return;
       const previewUrl = URL.createObjectURL(file);
       preview.addEventListener("load", () => URL.revokeObjectURL(previewUrl), { once: true });
       preview.src = previewUrl;
-    });
+    };
+    fileInput?.addEventListener("change", () => updateSelection(fileInput, cameraInput));
+    cameraInput?.addEventListener("change", () => updateSelection(cameraInput, fileInput));
     urlInput.addEventListener("input", () => {
-      if (!fileInput?.files?.length && urlInput.validity.valid) preview.src = urlInput.value || placeholderPhotoUrl;
+      if (!fileInput?.files?.length && !cameraInput?.files?.length && urlInput.validity.valid) {
+        preview.src = urlInput.value || placeholderPhotoUrl;
+      }
     });
   });
 }
 
 async function uploadSelectedPhoto(editor, assetCode) {
   const fileInput = editor.querySelector("[data-photo-file]");
+  const cameraInput = editor.querySelector("[data-photo-camera]");
   const urlInput = editor.querySelector("[data-photo-url]");
   const preview = editor.querySelector("[data-photo-preview]");
   const status = editor.querySelector("[data-photo-status]");
-  const file = fileInput?.files?.[0];
+  const file = fileInput?.files?.[0] || cameraInput?.files?.[0];
   if (!file) return urlInput.value;
   const validationError = validateImageFile(file);
   if (validationError) throw new Error(validationError);
@@ -511,7 +525,8 @@ async function uploadSelectedPhoto(editor, assetCode) {
     });
     urlInput.value = image.url;
     preview.src = image.url;
-    fileInput.value = "";
+    if (fileInput) fileInput.value = "";
+    if (cameraInput) cameraInput.value = "";
     status.textContent = "Image uploaded";
     return image.url;
   } catch (error) {
