@@ -152,8 +152,9 @@ function inventorySheets(data, generatedAt) {
   const readMe = [
     ["PAIR Lab NFC Inventory export", ""],
     ["Generated", generatedAt.toISOString()],
-    ["Purpose", "Round-trip inventory export. Worksheet and column names match the maintained import template."],
-    ["Workflow", "Edit a copy, keep the headers unchanged, validate it locally, and back up production before importing."],
+    ["Purpose", "Inventory workbook export. Equipment, bundle and category columns match the maintained import template."],
+    ["Member privacy", "The Members sheet includes display names, active state and notes only. Usernames are intentionally excluded."],
+    ["Workflow", "Member rows from this export cannot be imported because usernames are not included."],
     ["Operational data", "Reservations, checkouts, NFC labels, proposals and audit history are exported separately from the administrator dashboard."],
   ];
   const categories = [["category", "asset_code_prefix", "description"], ...data.categories.map((category) => [
@@ -185,15 +186,15 @@ function inventorySheets(data, generatedAt) {
       ]);
     }
   }
-  const members = [["username", "display_name", "active", "notes"], ...data.members.map((member) => [
-    member.username, member.displayName, member.active ? "Yes" : "No", member.notes || "",
+  const members = [["display_name", "active", "notes"], ...data.members.map((member) => [
+    member.displayName, member.active ? "Yes" : "No", member.notes || "",
   ])];
   return [
     { name: "Read me", rows: readMe, widths: [28, 110] },
     { name: "Categories", rows: categories, widths: [30, 20, 55] },
     { name: "Equipment", rows: equipment, widths: [14, 28, 28, 13, 20, 20, 18, 45, 20, 14, 18, 16, 16, 11, 24, 38, 38, 42, 30, 30, 30, 55] },
     { name: "Bundle contents", rows: components, widths: [14, 28, 20, 20, 18, 10, 20, 42, 55] },
-    { name: "Members", rows: members, widths: [22, 28, 12, 45] },
+    { name: "Members", rows: members, widths: [28, 12, 45] },
   ];
 }
 

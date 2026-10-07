@@ -3,10 +3,10 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { loadInventoryWorkbook } from "../scripts/lib/inventory-workbook.mjs";
+import { readXlsx } from "../scripts/lib/xlsx-reader.mjs";
 import { buildInventoryWorkbook } from "../web/xlsx-export.js";
 
-test("administrator inventory export round-trips through the canonical importer", async () => {
+test("administrator inventory export excludes member usernames", async () => {
   const outputDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "nfc-inventory-export-"));
   const outputPath = path.join(outputDirectory, "inventory.xlsx");
   try {
@@ -26,16 +26,21 @@ test("administrator inventory export round-trips through the canonical importer"
           photoUrl: "https://example.test/robot.jpg",
         }],
       }],
-      members: [{ username: "ranul", displayName: "Ranul", active: true, notes: "Pilot" }],
+      members: [{ username: "secret.username", displayName: "Ranul", active: true, notes: "Pilot" }],
     }, new Date("2026-10-02T12:00:00.000Z"));
     await fs.writeFile(outputPath, workbook);
-    const { data, report } = await loadInventoryWorkbook(outputPath);
-    assert.deepEqual(report.errors, []);
-    assert.equal(report.warnings.length, 0);
-    assert.deepEqual(report.counts, { categories: 1, equipment: 1, components: 1, members: 1, files: 1 });
-    assert.equal(data.equipment[0].assetCode, "ROB-003");
-    assert.equal(data.equipment[0].purchasePriceMinor, 100000);
-    assert.equal(data.components[0].photoUrl, "https://example.test/robot.jpg");
+    const exported = await readXlsx(outputPath);
+    assert.deepEqual(exported.get("Members"), [
+      ["display_name", "active", "notes"],
+      ["Ranul", "Yes", "Pilot"],
+    ]);
+    assert.equal(
+      [...exported.values()].flat(2).some((value) => value === "secret.username" || value === "username"),
+      false,
+    );
+    assert.equal(exported.get("Equipment")[1][0], "ROB-003");
+    assert.equal(exported.get("Equipment")[1][12], 1000);
+    assert.equal(exported.get("Bundle contents")[1][8], "https://example.test/robot.jpg");
   } finally {
     await fs.rm(outputDirectory, { recursive: true, force: true });
   }
