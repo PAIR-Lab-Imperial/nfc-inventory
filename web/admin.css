@@ -121,9 +121,11 @@
 .admin-table td img { width: 3.5rem; height: 3rem; display: block; object-fit: contain; background: var(--image-bg); border: 1px solid var(--line); border-radius: 0.45rem; }
 .admin-table td strong { display: block; }
 .admin-table td small { display: block; margin-top: 0.2rem; color: var(--muted); }
+.admin-table td .component-attention { color: var(--danger); font-weight: 750; }
 .admin-status { display: inline-flex; padding: 0.3rem 0.5rem; border-radius: 999px; background: var(--image-bg); font-size: 0.72rem; font-weight: 750; text-transform: capitalize; white-space: nowrap; }
 .admin-status.status-active { color: var(--success); background: var(--success-bg); }
-.admin-status.status-free { color: var(--success); background: var(--success-bg); }
+.admin-status.status-free,
+.admin-status.status-available { color: var(--success); background: var(--success-bg); }
 .admin-status.status-reserved { color: var(--reserved); background: var(--reserved-bg); }
 .admin-status.status-in_use { color: var(--use); background: var(--use-bg); }
 .admin-status.status-not_unboxed { color: var(--reserved); background: var(--reserved-bg); }

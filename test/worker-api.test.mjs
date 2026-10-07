@@ -44,6 +44,9 @@ class MutationStatement extends FakeStatement {
     if (this.query.includes("FROM members")) {
       return { results: this.state.members.map(({ id, display_name }) => ({ id, display_name })) };
     }
+    if (this.query.includes("FROM bundle_components")) {
+      return { results: this.state.currentComponents };
+    }
     return { results: [] };
   }
 
@@ -122,8 +125,9 @@ function mutationEnvironment({ openCheckout = null, currentCheckout = null, nfcL
     adminComponents: [{
       asset_code: "ROB-003", component_name: "Robot", manufacturer: "Pollen Robotics", model: "Mini",
       serial_number: "R-001", quantity: 1, required_on_return: 1, notes: null,
-      photo_url: "https://example.test/robot.jpg", display_order: 0,
+      operational_status: "available", photo_url: "https://example.test/robot.jpg", display_order: 0,
     }],
+    currentComponents: [],
     adminLabels: [{
       id: "label-0001", asset_code: "ROB-003", token_hint: "003-v1", status: "active",
       scan_url: "https://pair-lab-imperial.github.io/nfc-inventory/?t=demo-rob-003-v1",
@@ -284,7 +288,7 @@ function fakeEnvironment({ found = true } = {}) {
           { results: found ? [summaryRow] : [] },
           {
             results: found
-              ? [{ component_name: "Robot", manufacturer: null, model: null, quantity: 1, required_on_return: 1, notes: null, photo_url: "https://example.test/robot.jpg" }]
+              ? [{ component_name: "Robot", manufacturer: null, model: null, quantity: 1, required_on_return: 1, operational_status: "available", notes: null, photo_url: "https://example.test/robot.jpg" }]
               : [],
           },
           {
@@ -342,6 +346,7 @@ test("equipment detail includes public metadata, bundle contents and reservation
   assert.equal(item.publicSpecifications, "Wireless robot platform");
   assert.equal(item.components[0].name, "Robot");
   assert.equal(item.components[0].requiredOnReturn, true);
+  assert.equal(item.components[0].operationalStatus, "available");
   assert.equal(item.components[0].photoUrl, "https://example.test/robot.jpg");
   assert.equal(item.reservations[0].memberName, "Ranul");
   assert.equal(item.reservations[0].canShare, true);
@@ -515,6 +520,41 @@ test("return requires the current holder username", async () => {
   assert.match(state.writes[0][0].query, /UPDATE checkouts/);
 });
 
+test("bundle returns require every current constituent to be checked", async () => {
+  const { environment, state } = mutationEnvironment({
+    currentCheckout: {
+      id: "checkout-1",
+      equipment_id: "equipment-1",
+      checked_out_at: "2026-10-02T09:00:00.000Z",
+      member_id: "member-1",
+      username: "ranul",
+      display_name: "Ranul",
+      asset_code: "ROB-003",
+      item_type: "bundle",
+    },
+  });
+  state.currentComponents = [
+    { component_name: "Robot", quantity: 1, required_on_return: 1, operational_status: "available" },
+    { component_name: "Charger", quantity: 1, required_on_return: 1, operational_status: "available" },
+  ];
+
+  const incomplete = await worker.fetch(
+    postRequest("/api/v1/equipment/ROB-003/return", { username: "ranul", componentChecks: ["Robot"] }),
+    environment,
+  );
+  assert.equal(incomplete.status, 400);
+  assert.equal((await incomplete.json()).error.code, "component_checks_incomplete");
+
+  const returned = await worker.fetch(
+    postRequest("/api/v1/equipment/ROB-003/return", { username: "ranul", componentChecks: ["Robot", "Charger"] }),
+    environment,
+  );
+  assert.equal(returned.status, 200);
+  const body = await returned.json();
+  assert.deepEqual(body.checkout.componentChecks.map((component) => component.name), ["Robot", "Charger"]);
+  assert.deepEqual(JSON.parse(state.writes[0][0].parameters[2]).map((component) => component.name), ["Robot", "Charger"]);
+});
+
 test("write routes reject a different browser origin", async () => {
   const { environment } = mutationEnvironment();
   const response = await worker.fetch(
@@ -610,6 +650,7 @@ test("administrator data includes equipment photos, bundle photos, members and N
   const body = await response.json();
   assert.equal(body.equipment[0].photoUrl, "https://example.test/reachy.jpg");
   assert.equal(body.equipment[0].components[0].photoUrl, "https://example.test/robot.jpg");
+  assert.equal(body.equipment[0].components[0].operationalStatus, "available");
   assert.equal(body.members[0].username, "ranul");
   assert.equal(body.labels[0].tokenHint, "003-v1");
   assert.match(body.labels[0].scanUrl, /\?t=demo-rob-003-v1$/);
@@ -855,7 +896,7 @@ test("administrator can update a bundle and its component photos", async () => {
         lifecycleStatus: "active",
         currency: "GBP",
         photoUrl: "https://example.test/reachy-new.jpg",
-        components: [{ name: "Robot", quantity: 1, requiredOnReturn: true, photoUrl: "https://example.test/robot-new.jpg" }],
+        components: [{ name: "Robot", quantity: 1, requiredOnReturn: true, operationalStatus: "maintenance", photoUrl: "https://example.test/robot-new.jpg" }],
       }),
     }),
     environment,
@@ -866,7 +907,8 @@ test("administrator can update a bundle and its component photos", async () => {
   assert.match(writes[1].query, /DELETE FROM bundle_components/);
   assert.match(writes[2].query, /INSERT INTO bundle_components/);
   assert.equal(writes[0].parameters[16], "https://example.test/reachy-new.jpg");
-  assert.equal(writes[2].parameters[9], "https://example.test/robot-new.jpg");
+  assert.equal(writes[2].parameters[8], "maintenance");
+  assert.equal(writes[2].parameters[10], "https://example.test/robot-new.jpg");
 });
 
 test("administrator generates and stores a recoverable replacement NFC URL", async () => {

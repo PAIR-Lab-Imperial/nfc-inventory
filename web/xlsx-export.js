@@ -175,14 +175,14 @@ function inventorySheets(data, generatedAt) {
   ])];
   const components = [[
     "asset_code", "component_name", "manufacturer", "model", "serial_number", "quantity",
-    "required_on_return", "notes", "photo_reference",
+    "required_on_return", "operational_status", "notes", "photo_reference",
   ]];
   for (const item of data.equipment) {
     for (const component of item.components || []) {
       components.push([
         item.assetCode, component.name, component.manufacturer || "", component.model || "",
         component.serialNumber || "", component.quantity, component.requiredOnReturn ? "Yes" : "No",
-        component.notes || "", component.photoUrl || "",
+        component.operationalStatus || "available", component.notes || "", component.photoUrl || "",
       ]);
     }
   }
@@ -193,7 +193,7 @@ function inventorySheets(data, generatedAt) {
     { name: "Read me", rows: readMe, widths: [28, 110] },
     { name: "Categories", rows: categories, widths: [30, 20, 55] },
     { name: "Equipment", rows: equipment, widths: [14, 28, 28, 13, 20, 20, 18, 45, 20, 14, 18, 16, 16, 11, 24, 38, 38, 42, 30, 30, 30, 55] },
-    { name: "Bundle contents", rows: components, widths: [14, 28, 20, 20, 18, 10, 20, 42, 55] },
+    { name: "Bundle contents", rows: components, widths: [14, 28, 20, 20, 18, 10, 20, 20, 42, 55] },
     { name: "Members", rows: members, widths: [28, 12, 45] },
   ];
 }

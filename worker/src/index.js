@@ -20,6 +20,7 @@ const LOGIN_MAX_FAILURES = 5;
 const ITEM_TYPES = new Set(["individual", "bundle"]);
 const CONDITIONS = new Set(["good", "fair", "damaged", "unknown"]);
 const LIFECYCLE_STATUSES = new Set(["active", "maintenance", "missing", "retired"]);
+const COMPONENT_STATUSES = new Set(["available", "not_unboxed", "maintenance", "missing", "retired"]);
 const ADMIN_AVAILABILITY_VALUES = new Set(["free", "reserved", "in_use", "not_unboxed"]);
 const PROPOSAL_STATUSES = new Set(["proposed", "ordered", "received"]);
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
@@ -708,6 +709,7 @@ async function getEquipment(env, assetCode, origin) {
       component.model,
       component.quantity,
       component.required_on_return,
+      component.operational_status,
       component.notes,
       component.photo_url
     FROM bundle_components component
@@ -752,6 +754,7 @@ async function getEquipment(env, assetCode, origin) {
           model: component.model,
           quantity: component.quantity,
           requiredOnReturn: component.required_on_return === 1,
+          operationalStatus: component.operational_status,
           notes: component.notes,
           photoUrl: component.photo_url,
         })),
@@ -1137,6 +1140,9 @@ function adminEquipmentInput(body) {
       serialNumber: optionalText(component, "serialNumber", 200),
       quantity,
       requiredOnReturn: optionalBoolean(component, "requiredOnReturn", true),
+      operationalStatus: component.operationalStatus === undefined
+        ? "available"
+        : enumText(component, "operationalStatus", COMPONENT_STATUSES),
       notes: optionalText(component, "notes", 500),
       photoUrl: optionalUrl(component, "photoUrl"),
       displayOrder: index,
@@ -1236,7 +1242,8 @@ async function getAdminData(request, env, origin) {
     env.DB.prepare(`
       SELECT e.asset_code, component.component_name, component.manufacturer,
         component.model, component.serial_number, component.quantity,
-        component.required_on_return, component.notes, component.photo_url,
+        component.required_on_return, component.operational_status,
+        component.notes, component.photo_url,
         component.display_order
       FROM bundle_components component
       JOIN equipment e ON e.id = component.equipment_id
@@ -1300,6 +1307,7 @@ async function getAdminData(request, env, origin) {
       serialNumber: component.serial_number,
       quantity: component.quantity,
       requiredOnReturn: component.required_on_return === 1,
+      operationalStatus: component.operational_status,
       notes: component.notes,
       photoUrl: component.photo_url,
     });
@@ -1527,12 +1535,13 @@ async function saveAdminEquipment(request, env, origin, routeAssetCode = null) {
     statements.push(env.DB.prepare(`
       INSERT INTO bundle_components (
         id, equipment_id, component_name, manufacturer, model, serial_number,
-        quantity, required_on_return, notes, photo_url, display_order, created_at, updated_at
-      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?12)
+        quantity, required_on_return, operational_status, notes, photo_url,
+        display_order, created_at, updated_at
+      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?13)
     `).bind(
       component.id, equipmentId, component.name, component.manufacturer, component.model,
       component.serialNumber, component.quantity, component.requiredOnReturn ? 1 : 0,
-      component.notes, component.photoUrl, component.displayOrder, now,
+      component.operationalStatus, component.notes, component.photoUrl, component.displayOrder, now,
     ));
   }
   statements.push(env.DB.prepare(`
@@ -1768,7 +1777,8 @@ async function getAdminOperationalExport(request, env, origin) {
     env.DB.prepare(`
       SELECT checkout.id, equipment.asset_code, member.username, member.display_name,
         checkout.checked_out_at, checkout.expected_return_at, checkout.returned_at,
-        checkout.checkout_notes, checkout.return_notes, checkout.created_at,
+        checkout.checkout_notes, checkout.return_notes,
+        checkout.return_component_check_json, checkout.created_at,
         checkout.updated_at
       FROM checkouts checkout
       JOIN equipment ON equipment.id = checkout.equipment_id
@@ -1803,6 +1813,7 @@ async function getAdminOperationalExport(request, env, origin) {
       memberName: row.display_name, checkedOutAt: row.checked_out_at,
       expectedReturnAt: row.expected_return_at, returnedAt: row.returned_at,
       checkoutNotes: row.checkout_notes, returnNotes: row.return_notes,
+      returnComponentChecks: parseAuditJson(row.return_component_check_json),
       createdAt: row.created_at, updatedAt: row.updated_at,
     })),
     auditEvents: auditResult.results.map((row) => ({
@@ -1979,7 +1990,8 @@ async function returnEquipment(request, env, assetCode, origin) {
       member.id AS member_id,
       member.username,
       member.display_name,
-      equipment.asset_code
+      equipment.asset_code,
+      equipment.item_type
     FROM checkouts checkout
     JOIN equipment ON equipment.id = checkout.equipment_id
     JOIN members member ON member.id = checkout.member_id
@@ -1992,6 +2004,42 @@ async function returnEquipment(request, env, assetCode, origin) {
     throw new RequestError("username_mismatch", "Username does not match the current holder", 409);
   }
 
+  let componentChecks = [];
+  if (result.item_type === "bundle") {
+    const componentResult = await env.DB.prepare(`
+      SELECT component_name, quantity, required_on_return, operational_status
+      FROM bundle_components
+      WHERE equipment_id = ?1
+      ORDER BY display_order, component_name COLLATE NOCASE
+    `).bind(result.equipment_id).all();
+    const components = componentResult.results;
+    if (components.length) {
+      if (!Array.isArray(body.componentChecks)) {
+        throw new RequestError("component_checks_required", "Confirm every bundle component before returning this equipment");
+      }
+      const submitted = body.componentChecks.map((value, index) => {
+        if (typeof value !== "string" || !value.trim() || value.trim().length > 150) {
+          throw new RequestError("invalid_body", `componentChecks[${index}] must be a component name`);
+        }
+        return value.trim().toLocaleLowerCase("en-GB");
+      });
+      if (new Set(submitted).size !== submitted.length) {
+        throw new RequestError("invalid_body", "Bundle component confirmations must not contain duplicates");
+      }
+      const expected = components.map((component) => component.component_name.toLocaleLowerCase("en-GB"));
+      if (submitted.length !== expected.length || expected.some((name) => !submitted.includes(name))) {
+        throw new RequestError("component_checks_incomplete", "Every current bundle component must be checked before return");
+      }
+      componentChecks = components.map((component) => ({
+        name: component.component_name,
+        quantity: component.quantity,
+        requiredOnReturn: component.required_on_return === 1,
+        operationalStatus: component.operational_status,
+        checked: true,
+      }));
+    }
+  }
+
   const returnedAt = new Date().toISOString();
   const auditId = crypto.randomUUID();
   const before = {
@@ -2001,13 +2049,14 @@ async function returnEquipment(request, env, assetCode, origin) {
     checkedOutAt: result.checked_out_at,
     returnedAt: null,
   };
-  const after = { ...before, returnedAt, returnNotes };
+  const after = { ...before, returnedAt, returnNotes, componentChecks };
   await env.DB.batch([
     env.DB.prepare(`
       UPDATE checkouts
-      SET returned_at = ?1, return_notes = ?2, updated_at = ?1
-      WHERE id = ?3 AND returned_at IS NULL
-    `).bind(returnedAt, returnNotes, result.id),
+      SET returned_at = ?1, return_notes = ?2,
+        return_component_check_json = ?3, updated_at = ?1
+      WHERE id = ?4 AND returned_at IS NULL
+    `).bind(returnedAt, returnNotes, componentChecks.length ? JSON.stringify(componentChecks) : null, result.id),
     env.DB.prepare(`
       INSERT INTO audit_events (
         id, actor_type, actor_name, action, entity_type, entity_id,
@@ -2037,7 +2086,7 @@ export default {
         {
           ok: true,
           service: "pair-lab-nfc-inventory-api",
-          version: "0.16.0",
+          version: "0.17.0",
         },
         {},
         allowedOrigin,

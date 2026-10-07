@@ -1,4 +1,4 @@
-import { buildInventoryWorkbook } from "./xlsx-export.js";
+import { buildInventoryWorkbook } from "./xlsx-export.js?v=0.17.0";
 import { matchesAdminFilters } from "./admin-filters.js?v=0.12.0";
 import { IMAGE_ACCEPT, suggestAssetCode, validateImageFile } from "./admin-maintenance.js?v=0.15.0";
 
@@ -130,6 +130,14 @@ const availabilityLabels = Object.freeze({
   not_unboxed: "Not yet unboxed",
 });
 
+const componentStatusLabels = Object.freeze({
+  available: "Available",
+  not_unboxed: "Not yet unboxed",
+  maintenance: "Maintenance",
+  missing: "Missing",
+  retired: "Retired",
+});
+
 function filterOptions(options) {
   return options.map(({ value, label }) => `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`).join("");
 }
@@ -191,7 +199,7 @@ function equipmentView(data) {
                 <td><span class="asset-code">${escapeHtml(item.assetCode)}</span></td>
                 <td><strong>${escapeHtml(item.name)}</strong>${item.model ? `<small>${escapeHtml(item.model)}</small>` : ""}</td>
                 <td>${escapeHtml(item.category)}</td>
-                <td>${escapeHtml(item.itemType === "bundle" ? `Bundle (${item.components.length})` : "Individual")}</td>
+                <td>${item.itemType === "bundle" ? `Bundle (${item.components.length})${item.components.some((component) => (component.operationalStatus || "available") !== "available") ? `<small class="component-attention">${item.components.filter((component) => (component.operationalStatus || "available") !== "available").length} constituent${item.components.filter((component) => (component.operationalStatus || "available") !== "available").length === 1 ? "" : "s"} need attention</small>` : ""}` : "Individual"}</td>
                 <td><span class="admin-status status-${escapeHtml(item.availability)}">${escapeHtml(availabilityLabels[item.availability] || item.availability)}</span>${item.currentUser ? `<small>${escapeHtml(item.currentUser)}${item.availabilityUntil ? ` · until ${escapeHtml(formatDateTime(item.availabilityUntil))}` : ""}</small>` : ""}</td>
                 <td><div class="table-actions"><button class="secondary-button compact-button" type="button" data-edit-availability="${escapeHtml(item.assetCode)}">Availability</button><button class="secondary-button compact-button" type="button" data-edit-equipment="${escapeHtml(item.assetCode)}">Edit record</button></div></td>
               </tr>
@@ -549,6 +557,7 @@ async function uploadSelectedPhoto(editor, assetCode) {
 }
 
 function componentRow(component = {}) {
+  const operationalStatus = component.operationalStatus || "available";
   return `
     <fieldset class="component-editor">
       <div class="component-editor-heading"><strong>Bundle component</strong><button type="button" class="text-button" data-remove-component>Remove</button></div>
@@ -558,6 +567,7 @@ function componentRow(component = {}) {
         ${field("Manufacturer", "componentManufacturer", component.manufacturer, "maxlength=150")}
         ${field("Model", "componentModel", component.model, "maxlength=150")}
         ${field("Serial number", "componentSerialNumber", component.serialNumber, "maxlength=200")}
+        <label><span>Operational status</span><select name="componentOperationalStatus" required>${Object.entries(componentStatusLabels).map(([value, label]) => `<option value="${value}" ${operationalStatus === value ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select></label>
       </div>
       ${photoEditor("Component photo", "componentPhotoUrl", "componentPhotoFile", component.photoUrl)}
       <label class="check-field"><input name="componentRequired" type="checkbox" ${component.requiredOnReturn === false ? "" : "checked"}><span>Required on return</span></label>
@@ -641,6 +651,7 @@ function openEquipmentDialog(item = null) {
         serialNumber: row.querySelector('[name="componentSerialNumber"]').value,
         photoUrl: row.querySelector('[name="componentPhotoUrl"]').value,
         requiredOnReturn: row.querySelector('[name="componentRequired"]').checked,
+        operationalStatus: row.querySelector('[name="componentOperationalStatus"]').value,
         notes: row.querySelector('[name="componentNotes"]').value,
       },
     }));

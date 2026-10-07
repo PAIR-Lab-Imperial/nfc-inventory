@@ -8,6 +8,7 @@ document.addEventListener("error", (event) => {
 }, true);
 
 const statusLabels = Object.freeze({
+  available: "Available",
   free: "Available",
   reserved: "Reserved",
   in_use: "In use",
@@ -516,9 +517,24 @@ function actionDialogMarkup(kind, item, members) {
     `;
   }
 
+  const componentChecklist = item.itemType === "bundle" && item.components.length
+    ? `
+      <fieldset class="return-checklist">
+        <legend>Check every bundle component</legend>
+        <p>Confirm that each constituent has been physically checked and accounted for before completing the return.</p>
+        ${item.components.map((component) => `
+          <label class="return-check-item">
+            <input name="componentCheck" type="checkbox" value="${escapeHtml(component.name)}" required>
+            <span><strong>${escapeHtml(component.name)}</strong>${component.quantity > 1 ? `<small>Quantity ${component.quantity}</small>` : ""}<small>${component.requiredOnReturn ? "Required with bundle" : "Optional constituent"}</small></span>
+          </label>
+        `).join("")}
+      </fieldset>
+    `
+    : "";
   return `
     <p class="dialog-intro">Return <strong>${escapeHtml(item.assetCode)}</strong>. The username must match the current holder.</p>
     <label><span>Current holder’s username</span><input name="username" type="text" maxlength="80" autocomplete="username" required placeholder="Your username"><small class="field-help">Username is the part before @imperial.ac.uk. Do not use @ic.ac.uk.</small></label>
+    ${componentChecklist}
     <label><span>Return note <small>(optional)</small></span><textarea name="returnNotes" maxlength="500" rows="3" placeholder="Condition, missing parts, or other notes"></textarea></label>
   `;
 }
@@ -533,7 +549,10 @@ function renderDetail(item, members, { message = "" } = {}) {
           <li>
             <img data-equipment-photo src="${escapeHtml(component.photoUrl || placeholderPhotoUrl)}" alt="Photo of ${escapeHtml(component.name)}" loading="lazy">
             <div><strong>${escapeHtml(component.name)}</strong>${component.quantity > 1 ? `<span>Quantity ${component.quantity}</span>` : ""}</div>
-            <span class="return-flag">${component.requiredOnReturn ? "Return with bundle" : "Optional"}</span>
+            <div class="component-meta">
+              <span class="component-status status-${escapeHtml(component.operationalStatus || "available")}">${escapeHtml(statusLabel(component.operationalStatus || "available"))}</span>
+              <span class="return-flag">${component.requiredOnReturn ? "Return with bundle" : "Optional"}</span>
+            </div>
           </li>
         `).join("")}
       </ul>
@@ -708,6 +727,7 @@ function renderDetail(item, members, { message = "" } = {}) {
       },
       return: {
         username: data.get("username"),
+        componentChecks: data.getAll("componentCheck"),
         returnNotes: data.get("returnNotes") || null,
       },
     };

@@ -39,7 +39,9 @@ be omitted.
 - Prices are non-negative with no more than two decimal places. A currency code
   is required when a price is present.
 - Bundle quantities are positive whole numbers and `required_on_return` is
-  `Yes` or `No`.
+  `Yes` or `No`. The optional `operational_status` column accepts `Available`,
+  `Not yet unboxed`, `Maintenance`, `Missing` or `Retired`; a missing column or
+  blank cell defaults to `Available` for compatibility with older workbooks.
 - `photo_reference` is present on both Equipment and Bundle contents. It must
   be an HTTP or HTTPS URL. Use the maintained placeholder URL until a reviewed
   product or lab photograph is available.

@@ -96,13 +96,17 @@ reservations; members should use the visible sharing information to coordinate.
 ```json
 {
   "username": "ranul",
+  "componentChecks": ["Robot", "Charger", "USB cable"],
   "returnNotes": "Returned complete"
 }
 ```
 
 The typed username (the part before `@imperial.ac.uk`, not `@ic.ac.uk`) must
-match the holder of the open checkout. The comparison is
-case-insensitive. All three member actions create an audit event.
+match the holder of the open checkout. The comparison is case-insensitive. For
+a bundle with recorded constituents, `componentChecks` must contain every
+current component name exactly once. The validated checklist is retained on the
+checkout history and in its audit event. All three member actions create an
+audit event.
 
 ## Member-action security boundary
 
@@ -149,8 +153,9 @@ equipment, bundle components, members, categories, NFC label history and
 proposals. Equipment rows include their current availability, current member
 when applicable, and the tentative reservation end or expected return time.
 
-`GET /api/v1/admin/export/operations` returns reservations, checkouts, audit
-events and backup-run evidence for the protected operational export.
+`GET /api/v1/admin/export/operations` returns reservations, checkouts (including
+bundle return checklists), audit events and backup-run evidence for the protected
+operational export.
 
 `POST /api/v1/admin/images` accepts authenticated multipart form data with
 `assetCode` and `file`. Files are limited to 8 MB and must be JPEG, PNG or WebP;
@@ -169,7 +174,9 @@ r2_free_tier_guard` without reading R2.
 
 `POST /api/v1/admin/equipment` creates an equipment record. `PUT
 /api/v1/admin/equipment/{asset-code}` updates the record and replaces its bundle
-component list as one D1 batch. Asset codes remain immutable.
+component list as one D1 batch. Each component accepts `operationalStatus` as
+`available`, `not_unboxed`, `maintenance`, `missing` or `retired`. Asset codes
+remain immutable.
 
 `PUT /api/v1/admin/equipment/{asset-code}/availability` lets an administrator
 override the current member-entered availability for lifecycle-active equipment.

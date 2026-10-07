@@ -41,6 +41,10 @@ const REQUIRED_HEADERS = Object.freeze({
   Members: ["username", "display_name", "active", "notes"],
 });
 
+const OPTIONAL_HEADERS = Object.freeze({
+  "Bundle contents": ["operational_status"],
+});
+
 const ITEM_TYPES = new Map([
   ["individual", "individual"],
   ["bundle", "bundle"],
@@ -53,6 +57,14 @@ const CONDITIONS = new Map([
 ]);
 const LIFECYCLE_STATUSES = new Map([
   ["active", "active"],
+  ["maintenance", "maintenance"],
+  ["missing", "missing"],
+  ["retired", "retired"],
+]);
+const COMPONENT_STATUSES = new Map([
+  ["available", "available"],
+  ["not_unboxed", "not_unboxed"],
+  ["not yet unboxed", "not_unboxed"],
   ["maintenance", "maintenance"],
   ["missing", "missing"],
   ["retired", "retired"],
@@ -105,7 +117,11 @@ function readSheet(workbook, sheetName, errors) {
     const row = sheetRows[rowNumber - 1] ?? [];
     const record = { _row: rowNumber };
     let hasValue = false;
-    for (const header of REQUIRED_HEADERS[sheetName]) {
+    const selectedHeaders = [
+      ...REQUIRED_HEADERS[sheetName],
+      ...(OPTIONAL_HEADERS[sheetName] || []).filter((header) => headers.has(header)),
+    ];
+    for (const header of selectedHeaders) {
       const value = cellPrimitive(row[headers.get(header) - 1]);
       record[header] = value;
       if (textValue(value) !== "") hasValue = true;
@@ -351,6 +367,9 @@ export async function loadInventoryWorkbook(inputPath) {
       serialNumber: textValue(record.serial_number) || null,
       quantity,
       requiredOnReturn: parseYesNo(record, "required_on_return", "Bundle contents", errors),
+      operationalStatus: textValue(record.operational_status)
+        ? parseEnum(record, "operational_status", COMPONENT_STATUSES, "Bundle contents", errors)
+        : "available",
       notes: textValue(record.notes) || null,
       photoUrl: publicPhotoUrl(record.photo_reference, "Bundle contents", record._row, errors),
       displayOrder: record._row - 2,
@@ -458,7 +477,7 @@ export function generateInventorySql(data) {
   for (const component of data.components) {
     const equipmentId = `(SELECT id FROM equipment WHERE asset_code = ${sqlValue(component.assetCode)} COLLATE NOCASE)`;
     lines.push(
-      `INSERT INTO bundle_components (id, equipment_id, component_name, manufacturer, model, serial_number, quantity, required_on_return, notes, photo_url, display_order, updated_at) VALUES (${sqlValue(component.id)}, ${equipmentId}, ${values([component.componentName, component.manufacturer, component.model, component.serialNumber, component.quantity, component.requiredOnReturn, component.notes, component.photoUrl, component.displayOrder, timestamp])}) ON CONFLICT(equipment_id, component_name) DO UPDATE SET manufacturer = excluded.manufacturer, model = excluded.model, serial_number = excluded.serial_number, quantity = excluded.quantity, required_on_return = excluded.required_on_return, notes = excluded.notes, photo_url = excluded.photo_url, display_order = excluded.display_order, updated_at = excluded.updated_at;`,
+      `INSERT INTO bundle_components (id, equipment_id, component_name, manufacturer, model, serial_number, quantity, required_on_return, operational_status, notes, photo_url, display_order, updated_at) VALUES (${sqlValue(component.id)}, ${equipmentId}, ${values([component.componentName, component.manufacturer, component.model, component.serialNumber, component.quantity, component.requiredOnReturn, component.operationalStatus, component.notes, component.photoUrl, component.displayOrder, timestamp])}) ON CONFLICT(equipment_id, component_name) DO UPDATE SET manufacturer = excluded.manufacturer, model = excluded.model, serial_number = excluded.serial_number, quantity = excluded.quantity, required_on_return = excluded.required_on_return, operational_status = excluded.operational_status, notes = excluded.notes, photo_url = excluded.photo_url, display_order = excluded.display_order, updated_at = excluded.updated_at;`,
     );
   }
   lines.push("");

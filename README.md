@@ -35,9 +35,9 @@ docs/                   Architecture and deployment documentation
 - [x] Validated workbook importer and initial production inventory seed
 - [x] Public equipment catalogue and item record pages
 - [x] NFC token resolution and replaceable production-label associations
-- [x] Member reservations and equipment checkout/return
+- [x] Member reservations and equipment checkout/return, including mandatory bundle return checklists
 - [x] Password-protected administrator authentication and overview dashboard
-- [x] Administrator equipment, bundle, member and NFC-label management
+- [x] Administrator equipment, per-constituent bundle status, member and NFC-label management
 - [x] Public equipment and bundle-component photos, with source records and maintained placeholders where the model is ambiguous
 - [x] Tested administrator image uploader with safe URL fallback and automatic asset-code suggestions
 - [x] Enable R2, bind the image bucket and deploy the administrator uploader

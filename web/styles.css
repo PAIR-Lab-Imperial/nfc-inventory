@@ -323,7 +323,8 @@ h2 { letter-spacing: -0.025em; }
 }
 
 .status-pill { padding: 0.38rem 0.58rem; }
-.status-free { color: var(--success); background: var(--success-bg); }
+.status-free,
+.status-available { color: var(--success); background: var(--success-bg); }
 .status-reserved { color: var(--reserved); background: var(--reserved-bg); }
 .status-in_use { color: var(--use); background: var(--use-bg); }
 .status-not_unboxed { color: var(--reserved); background: var(--reserved-bg); }
@@ -548,6 +549,13 @@ h2 { letter-spacing: -0.025em; }
 .component-list li > img { width: 4rem; height: 4rem; object-fit: contain; background: var(--image-bg); border: 1px solid var(--line); border-radius: 0.65rem; }
 .component-list li > div { display: grid; gap: 0.2rem; }
 .component-list li > div span { color: var(--muted); font-size: 0.78rem; }
+.component-list .component-meta { justify-items: end; gap: 0.4rem; }
+.component-status { padding: 0.28rem 0.48rem; border-radius: 999px; font-size: 0.7rem !important; font-weight: 750; white-space: nowrap; }
+.component-status.status-available { color: var(--success); background: var(--success-bg); }
+.component-status.status-not_unboxed { color: var(--reserved); background: var(--reserved-bg); }
+.component-status.status-maintenance,
+.component-status.status-missing,
+.component-status.status-retired { color: var(--danger); background: var(--danger-bg); }
 .return-flag { color: var(--success); font-size: 0.75rem; font-weight: 750; }
 
 .reservation-list { margin-top: 1.2rem; display: grid; gap: 0.7rem; }
@@ -597,6 +605,13 @@ h2 { letter-spacing: -0.025em; }
 .dialog-fields label small { color: var(--muted); font-weight: 600; }
 .dialog-fields .field-help { line-height: 1.45; }
 .field-help { margin: 0; color: var(--muted); font-size: 0.76rem; line-height: 1.45; }
+.return-checklist { margin: 0; padding: 1rem; display: grid; gap: 0.65rem; background: var(--subtle); border: 1px solid var(--line); border-radius: 0.75rem; }
+.return-checklist legend { padding-inline: 0.3rem; font-size: 0.86rem; font-weight: 800; }
+.return-checklist > p { margin: 0 0 0.25rem; color: var(--muted); font-size: 0.78rem; line-height: 1.5; }
+.dialog-fields .return-check-item { min-height: 3rem; padding: 0.65rem 0.75rem; display: grid; grid-template-columns: auto 1fr; align-items: start; gap: 0.7rem; background: var(--surface); border: 1px solid var(--line); border-radius: 0.65rem; cursor: pointer; }
+.return-check-item input { width: 1.1rem !important; min-height: 1.1rem !important; margin-top: 0.15rem; }
+.return-check-item > span { display: grid; gap: 0.15rem; }
+.return-check-item small { display: block; }
 .dialog-fields input,
 .dialog-fields select,
 .dialog-fields textarea {
@@ -658,6 +673,8 @@ footer { border-top: 1px solid var(--line); }
   .equipment-card { min-height: 19rem; }
   .detail-list { grid-template-columns: 1fr; }
   .detail-list div:nth-child(even) { padding-left: 0; border-left: 0; }
+  .component-list li { grid-template-columns: 4rem minmax(0, 1fr); }
+  .component-list .component-meta { grid-column: 2; justify-items: start; }
   .field-pair { grid-template-columns: 1fr; }
   .proposal-option { grid-template-columns: 1fr auto; }
   .proposal-option a { grid-column: 1 / -1; }

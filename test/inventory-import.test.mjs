@@ -25,6 +25,7 @@ test("canonical workbook validates and contains the expected seed records", asyn
   assert.equal(data.equipment.filter((item) => item.primaryPhotoUrl).length, 80);
   assert.equal(data.equipment.filter((item) => !item.primaryPhotoUrl.endsWith("equipment-placeholder.svg")).length, 57);
   assert.equal(data.components.filter((item) => item.photoUrl).length, 27);
+  assert.equal(data.components.every((item) => item.operationalStatus === "available"), true);
   assert.equal(data.components.filter((item) => !item.photoUrl.endsWith("equipment-placeholder.svg")).length, 19);
   assert.equal(data.equipment.some((item) => item.assetCode === "CAM-005"), false);
   assert.equal(data.equipment.filter((item) => item.name === "Reachy Mini Wireless").length, 3);
@@ -92,6 +93,7 @@ test("generated SQL is upsert-only and escapes apostrophes", async () => {
   assert.match(sql, /Lab''s first robot/);
   assert.match(sql, /primary_photo_url/);
   assert.match(sql, /photo_url/);
+  assert.match(sql, /operational_status/);
   assert.doesNotMatch(sql, /\bDELETE\b/i);
   assert.doesNotMatch(sql, /BEGIN TRANSACTION|\bCOMMIT\b/i);
 });

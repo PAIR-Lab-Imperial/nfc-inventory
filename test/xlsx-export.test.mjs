@@ -22,7 +22,7 @@ test("administrator inventory export excludes member usernames", async () => {
         files: [{ kind: "manual", url: "https://example.test/manual.pdf" }],
         components: [{
           name: "Robot", manufacturer: "Pollen Robotics", model: "Mini", serialNumber: "R-001",
-          quantity: 1, requiredOnReturn: true, notes: "Return together",
+          quantity: 1, requiredOnReturn: true, operationalStatus: "maintenance", notes: "Return together",
           photoUrl: "https://example.test/robot.jpg",
         }],
       }],
@@ -40,7 +40,8 @@ test("administrator inventory export excludes member usernames", async () => {
     );
     assert.equal(exported.get("Equipment")[1][0], "ROB-003");
     assert.equal(exported.get("Equipment")[1][12], 1000);
-    assert.equal(exported.get("Bundle contents")[1][8], "https://example.test/robot.jpg");
+    assert.equal(exported.get("Bundle contents")[1][7], "maintenance");
+    assert.equal(exported.get("Bundle contents")[1][9], "https://example.test/robot.jpg");
   } finally {
     await fs.rm(outputDirectory, { recursive: true, force: true });
   }

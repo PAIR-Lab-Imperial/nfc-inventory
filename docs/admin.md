@@ -54,6 +54,12 @@ replacement. New asset codes are suggested from the selected category's prefix
 and next available number, but an administrator can edit the suggestion before
 saving.
 
+Every constituent inside a bundle has its own operational status: Available,
+Not yet unboxed, Maintenance, Missing or Retired. The equipment table flags
+bundles whose constituents need attention, and the status is edited inside that
+bundle's equipment record. These component states do not make constituents
+independently reservable.
+
 Equipment and every bundle component can use a separate public photo. The image
 editor always accepts a reviewed HTTPS image URL and shows a preview. When the
 Cloudflare `IMAGES` R2 binding is enabled. It offers a file picker and phone
