@@ -269,27 +269,40 @@ function labelsView(data) {
       </div>
       ${adminFilterBar("labels", {
         placeholder: "Asset code, equipment or label hint",
-        selects: [{
-          label: "Programming",
-          key: "programming",
-          allLabel: "Any programming state",
-          options: [
-            { value: "written", label: "Written" },
-            { value: "not_written", label: "Not written" },
-            { value: "no_label", label: "No active label" },
-          ],
-        }],
+        selects: [
+          {
+            label: "Readiness",
+            key: "readiness",
+            allLabel: "Any readiness",
+            options: [
+              { value: "unboxed", label: "Unboxed" },
+              { value: "not_unboxed", label: "Not yet unboxed" },
+            ],
+          },
+          {
+            label: "Programming",
+            key: "programming",
+            allLabel: "Any programming state",
+            options: [
+              { value: "written", label: "Written" },
+              { value: "not_written", label: "Not written" },
+              { value: "no_label", label: "No active label" },
+            ],
+          },
+        ],
       })}
       <div class="admin-table-wrap">
         <table class="admin-table">
-          <thead><tr><th>Asset</th><th>Equipment</th><th>Label hint</th><th>Created</th><th>Programming</th><th></th></tr></thead>
+          <thead><tr><th>Asset</th><th>Equipment</th><th>Readiness</th><th>Label hint</th><th>Created</th><th>Programming</th><th></th></tr></thead>
           <tbody>
             ${data.equipment.map((item) => {
               const label = activeLabels.get(item.assetCode);
+              const readiness = item.availability === "not_unboxed" ? "not_unboxed" : "unboxed";
               return `
-                <tr data-filter-row="labels" data-search="${escapeHtml([item.assetCode, item.name, item.model, label?.tokenHint].filter(Boolean).join(" "))}" data-programming="${label ? (label.writtenAt ? "written" : "not_written") : "no_label"}">
+                <tr data-filter-row="labels" data-search="${escapeHtml([item.assetCode, item.name, item.model, label?.tokenHint].filter(Boolean).join(" "))}" data-readiness="${readiness}" data-programming="${label ? (label.writtenAt ? "written" : "not_written") : "no_label"}">
                   <td><span class="asset-code">${escapeHtml(item.assetCode)}</span></td>
                   <td><strong>${escapeHtml(item.name)}</strong></td>
+                  <td><span class="admin-status ${readiness === "not_unboxed" ? "status-not_unboxed" : "status-free"}">${readiness === "not_unboxed" ? "Not yet unboxed" : "Unboxed"}</span></td>
                   <td>${label ? `…${escapeHtml(label.tokenHint)}` : "No active label"}</td>
                   <td>${label ? escapeHtml(formatDate(label.createdAt)) : "—"}</td>
                   <td>${label ? `<span class="admin-status ${label.writtenAt ? "status-written" : "status-not-written"}">${label.writtenAt ? "Written" : "Not written"}</span>${label.writtenAt ? `<small>${escapeHtml(formatDateTime(label.writtenAt))}${label.writtenBy ? ` · ${escapeHtml(label.writtenBy)}` : ""}</small>` : ""}` : "—"}</td>
@@ -301,7 +314,7 @@ function labelsView(data) {
                 </tr>
               `;
             }).join("")}
-            <tr data-filter-empty="labels" ${data.equipment.length ? "hidden" : ""}><td colspan="6" class="empty-table-cell">No NFC labels match these filters.</td></tr>
+            <tr data-filter-empty="labels" ${data.equipment.length ? "hidden" : ""}><td colspan="7" class="empty-table-cell">No NFC labels match these filters.</td></tr>
           </tbody>
         </table>
       </div>

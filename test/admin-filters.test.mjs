@@ -29,3 +29,18 @@ test("blank administrator filters match all rows", () => {
   ]), true);
 });
 
+test("NFC label filters can isolate equipment that is not yet unboxed", () => {
+  const labelRow = {
+    search: "MON-006 Amazon Basics Monitor",
+    readiness: "not_unboxed",
+    programming: "not_written",
+  };
+  assert.equal(matchesAdminFilters(labelRow, [
+    { key: "readiness", value: "not_unboxed" },
+    { key: "programming", value: "not_written" },
+  ]), true);
+  assert.equal(matchesAdminFilters(labelRow, [
+    { key: "readiness", value: "unboxed" },
+  ]), false);
+});
+
