@@ -441,12 +441,17 @@ h2 { letter-spacing: -0.025em; }
 .detail-hero {
   margin-top: 2rem;
   display: grid;
-  grid-template-columns: minmax(14rem, 0.65fr) minmax(0, 1.15fr) minmax(17rem, 0.55fr);
-  align-items: end;
-  gap: clamp(2rem, 6vw, 5rem);
+  grid-template-columns: minmax(18rem, 0.82fr) minmax(0, 1.18fr);
+  grid-template-areas:
+    "photo title"
+    "photo availability";
+  align-items: start;
+  column-gap: clamp(2rem, 5vw, 4rem);
+  row-gap: 1.5rem;
 }
 
 .detail-photo-frame {
+  grid-area: photo;
   overflow: hidden;
   aspect-ratio: 4 / 3;
   background: var(--surface);
@@ -456,10 +461,17 @@ h2 { letter-spacing: -0.025em; }
 }
 .detail-photo-frame img { width: 100%; height: 100%; display: block; object-fit: contain; }
 
-.detail-title .card-topline { justify-content: flex-start; margin-bottom: 1.5rem; }
-.detail-title h1 { font-size: clamp(2.6rem, 6vw, 4.8rem); }
+.detail-title {
+  grid-area: title;
+  align-self: end;
+  padding-top: 0.35rem;
+}
+.detail-title .card-topline { justify-content: flex-start; margin-bottom: 1.35rem; }
+.detail-title h1 { max-width: 13ch; font-size: clamp(2.6rem, 5vw, 4.35rem); }
+.detail-title .hero-copy { max-width: 38rem; }
 
 .availability-card {
+  grid-area: availability;
   padding: 1.35rem;
   background: var(--surface);
   border: 1px solid var(--line);
@@ -482,9 +494,9 @@ h2 { letter-spacing: -0.025em; }
 .detail-layout {
   margin-top: clamp(3rem, 7vw, 5rem);
   display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(18rem, 0.55fr);
+  grid-template-columns: minmax(0, 1.4fr) minmax(20rem, 0.6fr);
   align-items: start;
-  gap: 1rem;
+  gap: clamp(1.25rem, 3vw, 2rem);
 }
 
 .detail-main,
@@ -507,6 +519,15 @@ h2 { letter-spacing: -0.025em; }
   border: 1px solid var(--line);
   border-radius: 1rem;
 }
+
+.detail-section .section-heading {
+  display: grid;
+  justify-content: initial;
+  align-items: start;
+  gap: 0.15rem;
+}
+
+.detail-section .section-heading .eyebrow { margin-bottom: 0.35rem; }
 
 .detail-list {
   margin: 1.5rem 0 0;
@@ -614,8 +635,16 @@ footer { border-top: 1px solid var(--line); }
 
 @media (max-width: 58rem) {
   .catalogue-hero,
-  .detail-hero,
   .detail-layout { grid-template-columns: 1fr; }
+  .detail-hero {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "photo"
+      "title"
+      "availability";
+  }
+  .detail-title { padding-top: 0; }
+  .detail-title h1 { max-width: none; }
   .summary-strip { max-width: 34rem; }
   .equipment-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .proposal-grid { grid-template-columns: 1fr; }
