@@ -11,7 +11,7 @@ test("canonical workbook validates and contains the expected seed records", asyn
   assert.deepEqual(report.counts, {
     categories: 13,
     equipment: 80,
-    components: 30,
+    components: 27,
     members: 7,
     files: 33,
   });
@@ -23,12 +23,23 @@ test("canonical workbook validates and contains the expected seed records", asyn
   );
   assert.equal(data.equipment.filter((item) => item.name === "Azure Kinect DK").length, 2);
   assert.equal(data.equipment.filter((item) => item.primaryPhotoUrl).length, 80);
-  assert.equal(data.equipment.filter((item) => !item.primaryPhotoUrl.endsWith("equipment-placeholder.svg")).length, 58);
-  assert.equal(data.components.filter((item) => item.photoUrl).length, 30);
-  assert.equal(data.components.filter((item) => !item.photoUrl.endsWith("equipment-placeholder.svg")).length, 20);
+  assert.equal(data.equipment.filter((item) => !item.primaryPhotoUrl.endsWith("equipment-placeholder.svg")).length, 57);
+  assert.equal(data.components.filter((item) => item.photoUrl).length, 27);
+  assert.equal(data.components.filter((item) => !item.photoUrl.endsWith("equipment-placeholder.svg")).length, 19);
   assert.equal(data.equipment.some((item) => item.assetCode === "CAM-005"), false);
-  assert.equal(data.equipment.filter((item) => item.name === "Reachy Mini Wireless").length, 4);
+  assert.equal(data.equipment.filter((item) => item.name === "Reachy Mini Wireless").length, 3);
   assert.equal(data.equipment.filter((item) => item.name === "Reachy Mini Lite").length, 1);
+  const rob003 = data.equipment.find((item) => item.assetCode === "ROB-003");
+  assert.deepEqual(
+    [rob003?.name, rob003?.itemType, rob003?.lifecycleStatus],
+    ["NAO Robot", "individual", "retired"],
+  );
+  assert.equal(data.components.some((item) => item.assetCode === "ROB-003"), false);
+  const rob005 = data.equipment.find((item) => item.assetCode === "ROB-005");
+  assert.deepEqual(
+    [rob005?.name, rob005?.model, rob005?.purchasePriceMinor],
+    ["Reachy Mini Wireless", "Reachy Mini Wireless", 43993],
+  );
   const rob006 = data.equipment.find((item) => item.assetCode === "ROB-006");
   assert.equal(rob006.model, "Reachy Mini Wireless");
   assert.match(rob006.primaryPhotoUrl, /assets\/equipment\/reachy-mini-wireless\.png$/);
@@ -68,7 +79,8 @@ test("canonical workbook validates and contains the expected seed records", asyn
     ],
   );
   assert.match(data.equipment[0].primaryPhotoUrl, /assets\/equipment\/misty-ii\.png$/);
-  assert.match(data.components[0].photoUrl, /assets\/equipment\/reachy-mini-wireless\.png$/);
+  const rob005Robot = data.components.find((item) => item.assetCode === "ROB-005" && item.componentName === "Robot");
+  assert.match(rob005Robot.photoUrl, /assets\/equipment\/reachy-mini-wireless\.png$/);
 });
 
 test("generated SQL is upsert-only and escapes apostrophes", async () => {
